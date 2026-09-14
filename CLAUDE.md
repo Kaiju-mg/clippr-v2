@@ -77,4 +77,7 @@ Entidades en `src/types/index.ts` y `docs/arquitectura.md`: `Barbershop`, `User`
 
 ## Estado actual
 
-Scaffolding hecho, sin lógica de negocio todavía. Lo único que responde es `GET /api/health`.
+Spec 01 (infra, auth, multi-tenant) implementada y probada end-to-end contra un
+proyecto Supabase real: registro, login, logout, guard de sesión y RLS.
+Ver `docs/arquitectura.md` sección "Auth y Multi-Tenant" y `docs/decisiones.md`.
+El resto (agenda, caja, estadísticas) sigue siendo esqueleto sin lógica.

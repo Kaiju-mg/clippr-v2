@@ -30,6 +30,16 @@ Como desarrollador solitario ("solo dev"), la simplicidad y la velocidad de desa
 
 `GET /api/health` responde `{ status, service, timestamp }` sin tocar base de datos ni auth. Sirve para probes de deploy y monitoreo de uptime.
 
+### Auth y Multi-Tenant (implementado)
+
+Primera rebanada vertical (`docs/specs/01-infra-auth-multitenant.md`), probada de punta a punta contra un proyecto Supabase real.
+
+- **Alta de dueño + barbería:** `registerOwnerAction` (`src/actions/auth.actions.ts`) llama a `supabase.auth.signUp()` y, con la sesión ya activa, al RPC `register_owner` (`SECURITY DEFINER`, ver `supabase/migrations/`), que crea `barbershops` y `users` en una sola transacción. Si algo falla no queda un usuario de Auth "fantasma" sin perfil. `loginAction` y `logoutAction` completan el flujo (`logoutAction` redirige a `/login`).
+- **RLS:** habilitado en `barbershops` y `users`. Las políticas usan la función `public.current_barbershop_id()` (`SECURITY DEFINER`) en vez de un `EXISTS` directo contra `users`, para evitar recursión de RLS.
+- **Migraciones versionadas:** `supabase/migrations/` con el Supabase CLI (`supabase init` + `supabase link`). El proyecto real está linkeado; las credenciales viven en `.env.local` (no versionado).
+- **Páginas:** `(auth)/login`, `(auth)/registro` (formularios controlados, sin librería de forms) y `(dashboard)/layout.tsx` (guard de sesión server-side vía `supabase.auth.getUser()` + navbar con el nombre de la barbería y logout). Tras login/registro exitoso se redirige a `/agenda`, que por ahora es un placeholder (la lógica de turnos es de una spec futura).
+- **"Confirm email" desactivado** en el proyecto de Supabase por ahora (ver `decisiones.md` — hay que revisarlo antes de tener usuarios reales).
+
 ## Modelo de Datos
 
 Entidades principales enfocadas en resolver el modelo Multi-Tenant, los turnos y la gestión individual de caja:
@@ -58,17 +68,21 @@ Estructura basada en Next.js App Router, separando claramente la lógica de nego
 /public               # Assets estáticos y PWA
   /icons              # Íconos para la app en iOS/Android
   manifest.json       # Manifiesto de la PWA para instalación
+/supabase
+  /migrations         # SQL versionado (schema, RLS, RPC)
+  config.toml         # Config del Supabase CLI (proyecto linkeado)
 /src
   /app                # Rutas de la aplicación (Next.js App Router)
     layout.tsx        # Layout raíz (metadata, PWA)
     globals.css       # Tailwind v4 (@import "tailwindcss")
     /api
       /health         # Health check (GET /api/health)
-    /(auth)           # Páginas de login/registro
-    /(dashboard)      # Layout y páginas principales del sistema
-      /agenda         # Vista y gestión de turnos
-      /caja           # Gestión de CashSessions individuales
-      /estadisticas   # Reportes e insights (dueños/barberos)
+    /(auth)           # login/ y registro/ (implementado)
+      /__tests__      # auth.test.tsx (Vitest + Testing Library)
+    /(dashboard)      # Layout (guard de sesión + navbar, implementado)
+      /agenda         # Placeholder — vista y gestión de turnos (spec futura)
+      /caja           # Gestión de CashSessions individuales (vacío, .gitkeep)
+      /estadisticas   # Reportes e insights (vacío, .gitkeep)
   /components
     /ui               # Componentes base reutilizables (botones, modales)
     /forms            # Formularios de la aplicación
@@ -76,7 +90,7 @@ Estructura basada en Next.js App Router, separando claramente la lógica de nego
   /lib
     /supabase         # Clientes de Supabase: client.ts (browser), server.ts (servidor)
     utils.ts          # Funciones utilitarias generales
-  /actions            # Server Actions (Mutaciones y lógica de negocio segura)
+  /actions            # Server Actions — auth.actions.ts (implementado)
   /store              # Estado global del frontend (Zustand - ej. timerStore)
   /types              # Definiciones de tipos e interfaces TypeScript
 
@@ -84,7 +98,7 @@ Estructura basada en Next.js App Router, separando claramente la lógica de nego
 #       vitest.setup.ts, postcss.config.mjs, .prettierrc.json, .env.example
 ```
 
-Las carpetas de features (`(auth)`, `agenda`, `caja`, etc.) y `components/`, `actions/`, `store/` están creadas pero vacías (con `.gitkeep`): son el esqueleto, todavía sin lógica.
+`(auth)`, `(dashboard)/layout.tsx` y `(dashboard)/agenda` (placeholder) ya tienen lógica real — ver "Auth y Multi-Tenant" más arriba. `caja/`, `estadisticas/`, `components/`, `store/` siguen vacíos (`.gitkeep`): son el esqueleto para las próximas specs.
 
 ## Las 3 Decisiones Técnicas Más Riesgosas y su Alternativa
 
