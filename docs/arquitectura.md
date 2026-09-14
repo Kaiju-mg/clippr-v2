@@ -40,6 +40,36 @@ Primera rebanada vertical (`docs/specs/01-infra-auth-multitenant.md`), probada d
 - **Páginas:** `(auth)/login`, `(auth)/registro` (formularios controlados, sin librería de forms) y `(dashboard)/layout.tsx` (guard de sesión server-side vía `supabase.auth.getUser()` + navbar con el nombre de la barbería y logout). Tras login/registro exitoso se redirige a `/agenda`, que por ahora es un placeholder (la lógica de turnos es de una spec futura).
 - **"Confirm email" desactivado** en el proyecto de Supabase por ahora (ver `decisiones.md` — hay que revisarlo antes de tener usuarios reales).
 
+### Catálogo de Servicios (implementado)
+
+Segunda rebanada vertical (`docs/specs/02-catalogo-de-servicios.md`). Las dos
+migraciones (`20260914000000_create_services_table.sql` y
+`20260914010000_services_price_integer.sql`) ya están aplicadas contra el
+proyecto real (`supabase db push`). Probado con Vitest (Supabase mockeado)
+**y** de punta a punta en el navegador contra el proyecto real, incluyendo
+aislamiento de tenant con dos barberías.
+
+- **CRUD:** `src/actions/service.actions.ts` (`getServicesAction`,
+  `createServiceAction`, `updateServiceAction`, `toggleServiceStatusAction`).
+  Ninguna filtra por `barbershop_id` a mano: el `INSERT` completa la columna
+  solo via `default public.current_barbershop_id()` y el resto delega el
+  aislamiento en las políticas RLS de `services`.
+- **UI:** `(dashboard)/servicios/page.tsx` (Server Component) +
+  `_components/ServiceList.tsx` y `_components/ServiceInlineForm.tsx` (Client
+  Components, usan `router.refresh()` tras cada mutación exitosa). Editar
+  expande la fila in-place (sin modal); "Nuevo servicio" abre el mismo
+  formulario arriba de la lista. Activar/Desactivar es un `Switch`
+  (`src/components/ui/Switch.tsx`) con `useOptimistic` — cambia al instante,
+  sin esperar al servidor. `getServicesAction` devuelve todos los servicios
+  (activos primero); no hay borrado, solo `toggleServiceStatusAction`.
+  Componentes base en `src/components/ui/` (`Button`, `Input`, `Switch`).
+- **Precio en guaraníes:** `price` es `integer` (sin decimales — el PYG no
+  tiene subunidad) y se muestra con `formatGuaranies()` (`src/lib/utils.ts`).
+- **Dirección visual (spec 02):** tema claro fijo (sin `prefers-color-scheme`),
+  acento "Tinta" (`#1f3a5f`), tipografías `Zilla Slab` + `Work Sans` vía
+  `next/font/google`. Tokens en `src/app/globals.css`. Ver `decisiones.md`
+  2026-09-14.
+
 ## Modelo de Datos
 
 Entidades principales enfocadas en resolver el modelo Multi-Tenant, los turnos y la gestión individual de caja:
@@ -51,7 +81,9 @@ Entidades principales enfocadas en resolver el modelo Multi-Tenant, los turnos y
 - **Product (Producto / Stock):**
   - `id`, `barbershop_id`, `name`, `price`, `stock`, `low_stock_threshold`
 - **Service (Servicio ofrecido):**
-  - `id`, `barbershop_id`, `name`, `price`, `duration_minutes`
+  - `id`, `barbershop_id`, `name`, `price` (entero, guaraníes sin
+    decimales), `duration_minutes`, `is_active` (activar/desactivar
+    reversible desde la UI, no borrado — ver `decisiones.md`)
 - **Appointment (Turno / Corte):**
   - `id`, `barbershop_id`, `user_id` (barbero asignado), `client_name`, `service_id`, `start_time`, `end_time`, `status` (scheduled, walkin, completed, cancelled)
 - **CashSession (Sesión de Caja Diaria por Barbero):**
@@ -81,16 +113,17 @@ Estructura basada en Next.js App Router, separando claramente la lógica de nego
       /__tests__      # auth.test.tsx (Vitest + Testing Library)
     /(dashboard)      # Layout (guard de sesión + navbar, implementado)
       /agenda         # Placeholder — vista y gestión de turnos (spec futura)
+      /servicios      # Catálogo de servicios (implementado, spec 02)
       /caja           # Gestión de CashSessions individuales (vacío, .gitkeep)
       /estadisticas   # Reportes e insights (vacío, .gitkeep)
   /components
-    /ui               # Componentes base reutilizables (botones, modales)
+    /ui               # Componentes base reutilizables (Button, Input, Switch)
     /forms            # Formularios de la aplicación
     /timers           # Lógica visual de los temporizadores
   /lib
     /supabase         # Clientes de Supabase: client.ts (browser), server.ts (servidor)
-    utils.ts          # Funciones utilitarias generales
-  /actions            # Server Actions — auth.actions.ts (implementado)
+    utils.ts          # Funciones utilitarias generales (incluye formatGuaranies)
+  /actions            # Server Actions — auth.actions.ts, service.actions.ts (implementados)
   /store              # Estado global del frontend (Zustand - ej. timerStore)
   /types              # Definiciones de tipos e interfaces TypeScript
 
@@ -98,7 +131,11 @@ Estructura basada en Next.js App Router, separando claramente la lógica de nego
 #       vitest.setup.ts, postcss.config.mjs, .prettierrc.json, .env.example
 ```
 
-`(auth)`, `(dashboard)/layout.tsx` y `(dashboard)/agenda` (placeholder) ya tienen lógica real — ver "Auth y Multi-Tenant" más arriba. `caja/`, `estadisticas/`, `components/`, `store/` siguen vacíos (`.gitkeep`): son el esqueleto para las próximas specs.
+`(auth)`, `(dashboard)/layout.tsx`, `(dashboard)/servicios` ya tienen lógica
+real — ver "Auth y Multi-Tenant" y "Catálogo de Servicios" más arriba.
+`(dashboard)/agenda` sigue siendo un placeholder (spec futura). `caja/`,
+`estadisticas/`, `forms/`, `timers/`, `store/` siguen vacíos (`.gitkeep`):
+son el esqueleto para las próximas specs.
 
 ## Las 3 Decisiones Técnicas Más Riesgosas y su Alternativa
 

@@ -103,3 +103,132 @@ usuario; `/agenda` es el destino más natural para un barbero aunque su
 lógica real sea de otra spec.
 Costo: `(dashboard)/agenda/page.tsx` habrá que reemplazarlo por completo
 cuando se implemente la spec de agenda — no reusar su contenido.
+
+## 2026-09-14 — `services`: borrado lógico (`is_active`), no `DELETE` físico
+Elegido: `deleteServiceAction` hace `UPDATE services SET is_active = false`;
+`getServicesAction` filtra `is_active = true`. Columna agregada a la tabla y
+a `Service` en `src/types/index.ts` (no estaba en el modelo original de la
+spec 02 ni de `arquitectura.md`).
+Descartado: `DELETE FROM services` físico, tal como sugería la spec como
+opción por defecto ("Desactiva o borra el servicio").
+Por qué: la propia spec 02 (sección 5, "Integridad Referencial") advierte
+que los turnos (`Appointments`, spec futura) van a referenciar
+`service_id`, y un `DELETE` físico rompería ese historial o forzaría a
+dejar la FK nullable. El borrado lógico es la opción que no hay que
+deshacer después.
+Costo: la tabla nunca se "limpia" sola; si hace falta un borrado real
+(ej. GDPR/limpieza) habrá que agregarlo aparte. Cualquier query futura que
+lea `services` sin pasar por `getServicesAction` tiene que acordarse de
+filtrar `is_active = true`.
+
+## 2026-09-14 — `services.barbershop_id` con `default current_barbershop_id()`, no seteado desde el Server Action
+Elegido: la columna `barbershop_id` de `services` tiene
+`default public.current_barbershop_id()` en la migración.
+`createServiceAction` inserta solo `{ name, price, duration_minutes }`, sin
+tocar `barbershop_id`.
+Descartado: que el Server Action consulte `users` para obtener el
+`barbershop_id` del usuario autenticado y lo mande explícito en el
+`insert`, confiando en que la policy `WITH CHECK` de RLS lo valide.
+Por qué: si el valor nunca sale del cliente/action, no hay nada que un
+Server Action mal escrito (hoy o en el futuro) pueda "confundir" o
+sobreescribir — la regla no-negociable #2 de `CLAUDE.md` ("RLS es la
+barrera, no un `WHERE` a mano") queda reforzada a nivel de schema en vez
+de depender de que cada action la respete. También evita un round-trip
+extra a `users` en cada alta.
+Costo: quien lea la migración tiene que saber que `current_barbershop_id()`
+depende de `auth.uid()` (spec 01) — si algún día se inserta un servicio
+fuera de una request autenticada (ej. un script admin), el default
+resuelve `null` y el `insert` falla por el `not null`.
+
+## 2026-09-14 — Dirección visual: tema claro fijo, acento "Tinta", sin modal
+Elegido (a pedido del usuario, con mockups iterados en un Artifact antes de
+tocar código real):
+- Fondo blanco fijo — se saca `@media (prefers-color-scheme: dark)` de
+  `globals.css`. No hay modo oscuro por ahora.
+- Acento de marca "Tinta" (`#1f3a5f`), no naranja/latón (primera propuesta,
+  rechazada) ni negro/blanco genérico.
+- Tipografía: `Zilla Slab` (títulos, nombre de servicio, precio) + `Work
+  Sans` (el resto), cargadas vía `next/font/google` en `layout.tsx`.
+- `ServiceFormModal.tsx` (bottom sheet) reemplazado por
+  `ServiceInlineForm.tsx`: al tocar "Editar" la fila se expande in-place
+  dentro de la lista, sin overlay. "Nuevo servicio" abre el mismo
+  componente arriba de la lista. Se borró `src/components/ui/Modal.tsx`
+  por quedar sin uso.
+Descartado: acento naranja/latón sobre fondo oscuro (primera propuesta);
+tema adaptable a `prefers-color-scheme`; edición vía modal/bottom-sheet;
+edición en pantalla completa y en panel lateral (alternativas mostradas,
+no elegidas).
+Por qué: al usuario no le gustó el naranja ni el popup ("muy rústico").
+Se le ofrecieron 3 colores y 3 patrones de edición (fila expandible,
+pantalla completa, panel lateral) como mockups interactivos; eligió tinta
++ fila expandible.
+Costo: si más adelante se agrega modo oscuro, hay que diseñarlo de cero
+(hoy no existe ningún token oscuro). El patrón de fila expandible no
+escala bien si el formulario de edición crece mucho (ver nota en el
+mockup) — si eso pasa, reconsiderar pantalla completa.
+
+## 2026-09-14 — `services.price` como entero (guaraníes, sin decimales)
+Elegido: columna `price` pasa de `numeric` a `integer` (migración
+`20260914010000_services_price_integer.sql`), y `validateServicePayload`
+en `service.actions.ts` exige `Number.isInteger(price)`. El precio se
+muestra formateado con `formatGuaranies()` (`src/lib/utils.ts`), que usa
+`Intl.NumberFormat("es-PY", { style: "currency", currency: "PYG",
+maximumFractionDigits: 0 })`.
+Descartado: dejar `price` como `numeric`/decimal genérico, agnóstico de
+moneda.
+Por qué: el usuario aclaró que los precios son en guaraníes (PYG), que no
+tiene subunidad — no existen "centavos" de guaraní. Validar y guardar
+como entero evita datos imposibles (ej. ₲ 5.000,50) y simplifica el input
+del formulario (`step="1"`).
+Costo: si Clippr algún día soporta otra moneda con decimales (multi-tenant
+con barberías en otro país), `price` como `integer` y la validación dejan
+de servir — habría que agregar una columna de moneda por barbería y
+condicionar la validación/formato a eso.
+
+## 2026-09-14 — Activar/Desactivar servicio con switch optimista, no "Borrar"
+Elegido: `deleteServiceAction` se reemplaza por
+`toggleServiceStatusAction(id, isActive)` — recibe el estado destino
+explícito (no "toggleá lo que haya"), para evitar carreras si el cliente
+y el servidor quedan desincronizados. `getServicesAction` deja de filtrar
+`is_active = true`: ahora devuelve todos los servicios (activos primero,
+`order("is_active", { ascending: false }).order("name")`) para que la UI
+pueda reactivar los inactivos. En `ServiceList.tsx` cada fila tiene un
+`Switch` (`src/components/ui/Switch.tsx`) en vez de un botón de borrar,
+con `useOptimistic` + `useTransition`: el switch cambia visualmente al
+tocarlo, antes de que responda el servidor.
+Descartado: mantener `deleteServiceAction` (borrado lógico de una sola
+dirección, sin forma de reactivar desde la UI) y actualizar la lista
+recién después de que el Server Action resuelva (patrón pesimista, como
+en `createServiceAction`/`updateServiceAction`).
+Por qué: pedido explícito del usuario — un servicio temporalmente no
+disponible (de temporada, barbero de licencia) es un caso más común que
+un borrado definitivo, y una barra de estado va mejor con feedback
+instantáneo que con un botón de "Borrar" que espera al servidor.
+Costo: la lista ahora siempre incluye inactivos (atenuados con
+`opacity-40`), así que puede crecer más de lo que crecía antes con el
+filtro; si el catálogo de una barbería llega a tener muchos servicios
+inactivos acumulados, capaz haga falta paginar o separar en una sección
+aparte. El optimismo del switch puede parpadear un instante si
+`toggleServiceStatusAction` falla (RLS, red) — se revierte solo al
+recibir la respuesta, pero el usuario ve el estado "incorrecto" por un
+momento.
+
+## 2026-09-14 — "Eliminar" dentro de Editar reutiliza el toggle, no borra de verdad
+Elegido: `ServiceInlineForm.tsx` agrega un botón "Eliminar" (estilo
+`danger`), visible solo al editar un servicio existente (no al crear uno
+nuevo), que llama a `toggleServiceStatusAction(service.id, false)` — el
+mismo Server Action que usa el `Switch` — y cierra el formulario al
+terminar.
+Descartado: agregar un `deleteServiceAction` nuevo que haga un `DELETE`
+físico de la fila.
+Por qué: pedido del usuario de tener un botón "Eliminar" accesible desde
+la pantalla de edición, sin volver a abrir la discusión de integridad
+referencial ya resuelta (`Appointments` futuros van a referenciar
+`service_id`). Como ya existía un mecanismo reversible y seguro
+(`toggleServiceStatusAction`), "Eliminar" es solo otra entrada a ese mismo
+mecanismo, en vez de un camino nuevo y irreversible.
+Costo: el nombre "Eliminar" puede generar expectativa de que el servicio
+desaparece para siempre; en los hechos es indistinguible de apagar el
+switch. Si más adelante hace falta un borrado permanente real (limpieza
+de datos, GDPR), hay que diseñarlo aparte — no está cubierto por este
+botón.

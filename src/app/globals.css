@@ -1,26 +1,40 @@
 @import "tailwindcss";
 
+/*
+ * Tema fijo claro (sin prefers-color-scheme): decisión de diseño del
+ * 2026-09-14, ver docs/decisiones.md. "Tinta" (#1f3a5f) es el acento de
+ * marca — evocando el color de una barbería real sin caer en el
+ * azul-SaaS genérico ni en naranja/neón.
+ */
 :root {
   --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --foreground: #17171a;
+  --muted: #74736c;
+  --line: #e5e3dd;
+  --surface-2: #f6f6f4;
+  --accent: #1f3a5f;
+  --accent-strong: #16283f;
+  --danger: #a83b32;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-surface-2: var(--surface-2);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-work-sans);
+  --font-display: var(--font-zilla-slab);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family:
+    var(--font-sans),
     system-ui,
     -apple-system,
     "Segoe UI",

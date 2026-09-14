@@ -80,4 +80,12 @@ Entidades en `src/types/index.ts` y `docs/arquitectura.md`: `Barbershop`, `User`
 Spec 01 (infra, auth, multi-tenant) implementada y probada end-to-end contra un
 proyecto Supabase real: registro, login, logout, guard de sesión y RLS.
 Ver `docs/arquitectura.md` sección "Auth y Multi-Tenant" y `docs/decisiones.md`.
+
+Spec 02 (catálogo de servicios, CRUD en `/servicios`) implementada y probada
+con Vitest (mocks de Supabase) y de punta a punta en el navegador contra el
+proyecto real, incluyendo aislamiento de tenant con dos barberías. Activar/
+Desactivar un servicio es un switch optimista (`useOptimistic`), no un
+borrado. Ver `docs/arquitectura.md` sección "Catálogo de Servicios" y
+`docs/decisiones.md`.
+
 El resto (agenda, caja, estadísticas) sigue siendo esqueleto sin lógica.

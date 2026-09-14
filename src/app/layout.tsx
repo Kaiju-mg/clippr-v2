@@ -1,5 +1,18 @@
 import type { Metadata, Viewport } from "next";
+import { Work_Sans, Zilla_Slab } from "next/font/google";
 import "./globals.css";
+
+const workSans = Work_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-work-sans",
+});
+
+const zillaSlab = Zilla_Slab({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  variable: "--font-zilla-slab",
+});
 
 export const metadata: Metadata = {
   title: "Clippr",
@@ -13,7 +26,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0a0a",
+  themeColor: "#ffffff",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -24,7 +37,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="es">
+    <html lang="es" className={`${workSans.variable} ${zillaSlab.variable}`}>
       <body>{children}</body>
     </html>
   );
