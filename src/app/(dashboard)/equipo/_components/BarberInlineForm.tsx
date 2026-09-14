@@ -1,0 +1,147 @@
+"use client";
+
+import { useState, type FormEvent } from "react";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
+import { createBarberAction, updateBarberAction } from "@/actions/team.actions";
+import type { User, UserLevel } from "@/types";
+
+const NIVELES: { value: UserLevel; label: string }[] = [
+  { value: "junior", label: "Junior" },
+  { value: "pro", label: "Pro" },
+  { value: "senior", label: "Senior" },
+  { value: "elite", label: "Elite" },
+];
+
+interface BarberInlineFormProps {
+  /** null = alta de un barbero nuevo. Un User existente = edición
+   * (solo nivel y comisión: no se puede cambiar nombre/correo acá). */
+  barber: User | null;
+  onCancel: () => void;
+  onSaved: () => void;
+}
+
+export function BarberInlineForm({
+  barber,
+  onCancel,
+  onSaved,
+}: BarberInlineFormProps) {
+  const [name, setName] = useState(barber?.name ?? "");
+  const [email, setEmail] = useState("");
+  const [level, setLevel] = useState<UserLevel>(barber?.level ?? "junior");
+  const [commissionPct, setCommissionPct] = useState(
+    barber ? String(barber.commission_pct) : "",
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const fieldPrefix = barber?.id ?? "new";
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setIsLoading(true);
+
+    const result = barber
+      ? await updateBarberAction(barber.id, {
+          level,
+          commission_pct: Number(commissionPct),
+        })
+      : await createBarberAction({
+          name,
+          email,
+          level,
+          commission_pct: Number(commissionPct),
+        });
+
+    setIsLoading(false);
+
+    if (!result.success) {
+      setError(result.error);
+      return;
+    }
+
+    onSaved();
+  }
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="bg-surface-2 mx-0.5 mb-3.5 flex flex-col gap-3 rounded-lg p-3.5"
+    >
+      {!barber && (
+        <>
+          <Input
+            id={`barber-name-${fieldPrefix}`}
+            label="Nombre"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            required
+          />
+          <Input
+            id={`barber-email-${fieldPrefix}`}
+            label="Correo"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            required
+          />
+        </>
+      )}
+
+      <div className="flex flex-col gap-1">
+        <label
+          htmlFor={`barber-level-${fieldPrefix}`}
+          className="text-muted text-sm font-medium"
+        >
+          Nivel
+        </label>
+        <select
+          id={`barber-level-${fieldPrefix}`}
+          value={level}
+          onChange={(event) => setLevel(event.target.value as UserLevel)}
+          className="border-line bg-background text-foreground rounded border px-3 py-2"
+        >
+          {NIVELES.map((nivel) => (
+            <option key={nivel.value} value={nivel.value}>
+              {nivel.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <Input
+        id={`barber-commission-${fieldPrefix}`}
+        label="Comisión (%)"
+        type="number"
+        min="0"
+        max="100"
+        step="1"
+        className="tabular-nums"
+        value={commissionPct}
+        onChange={(event) => setCommissionPct(event.target.value)}
+        required
+      />
+
+      {error && (
+        <p role="alert" className="text-danger text-sm">
+          {error}
+        </p>
+      )}
+
+      <div className="flex items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={onCancel}
+          disabled={isLoading}
+        >
+          Cancelar
+        </Button>
+        <Button type="submit" disabled={isLoading}>
+          {isLoading ? "Guardando..." : "Guardar"}
+        </Button>
+      </div>
+    </form>
+  );
+}

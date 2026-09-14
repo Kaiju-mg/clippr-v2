@@ -70,6 +70,38 @@ aislamiento de tenant con dos barberías.
   `next/font/google`. Tokens en `src/app/globals.css`. Ver `decisiones.md`
   2026-09-14.
 
+### Gestión de Equipo (implementado)
+
+Tercera rebanada vertical (`docs/specs/03-gestion-de-equipo.md`). Sin
+migraciones nuevas: la tabla `users` ya traía `level`/`commission_pct` desde
+la Spec 01, y la policy `users_insert_same_barbershop` ya permitía el
+`INSERT` que necesita esta spec. Probado con Vitest (Supabase mockeado); no
+se corrió el flujo de punta a punta contra el proyecto real (crear un
+barbero real y loguearse con esa cuenta) en esta sesión.
+
+- **Alta de barberos:** `src/lib/supabase/admin.ts` expone un cliente con la
+  `SERVICE_ROLE_KEY`, de uso exclusivo en el servidor y solo para
+  `auth.admin.createUser()` — así se crea la cuenta de Auth del barbero sin
+  cerrar la sesión del dueño (que es lo que pasaría con `auth.signUp()`).
+  `createBarberAction` (`src/actions/team.actions.ts`) hace ese alta y
+  después inserta el perfil en `public.users` con el cliente normal (sesión
+  del dueño, con RLS), heredando `barbershop_id` del propio perfil del
+  dueño — nunca del payload que manda el cliente.
+- **RBAC en el Server Action, no en RLS:** `createBarberAction` y
+  `updateBarberAction` verifican explícitamente `role === 'owner'` de quien
+  llama antes de hacer nada. RLS solo aísla tenants (Barbería A de B); un
+  barbero autenticado técnicamente podría intentar un `insert`/`update`
+  directo contra `users` de su propia barbería si evita el Server Action —
+  eso es lo que valida el control de rol en la acción. Ver
+  `docs/specs/03-gestion-de-equipo.md` sección 5 y `decisiones.md`.
+- **UI:** `(dashboard)/equipo/page.tsx` (Server Component) +
+  `_components/TeamList.tsx` y `_components/BarberInlineForm.tsx` (Client
+  Components). Mismo patrón de fila expandible que `servicios` (sin modal ni
+  bottom sheet, pese a que la spec 03 lo sugería — ver `decisiones.md`
+  2026-09-14). El botón "Agregar Barbero" y el ícono de editar solo se
+  muestran si `isOwner`; la fila del dueño se lista pero no es editable
+  desde acá.
+
 ## Modelo de Datos
 
 Entidades principales enfocadas en resolver el modelo Multi-Tenant, los turnos y la gestión individual de caja:
@@ -114,6 +146,7 @@ Estructura basada en Next.js App Router, separando claramente la lógica de nego
     /(dashboard)      # Layout (guard de sesión + navbar, implementado)
       /agenda         # Placeholder — vista y gestión de turnos (spec futura)
       /servicios      # Catálogo de servicios (implementado, spec 02)
+      /equipo         # Gestión de equipo/barberos (implementado, spec 03)
       /caja           # Gestión de CashSessions individuales (vacío, .gitkeep)
       /estadisticas   # Reportes e insights (vacío, .gitkeep)
   /components
@@ -121,9 +154,9 @@ Estructura basada en Next.js App Router, separando claramente la lógica de nego
     /forms            # Formularios de la aplicación
     /timers           # Lógica visual de los temporizadores
   /lib
-    /supabase         # Clientes de Supabase: client.ts (browser), server.ts (servidor)
+    /supabase         # Clientes de Supabase: client.ts (browser), server.ts (servidor), admin.ts (Service Role Key, solo servidor)
     utils.ts          # Funciones utilitarias generales (incluye formatGuaranies)
-  /actions            # Server Actions — auth.actions.ts, service.actions.ts (implementados)
+  /actions            # Server Actions — auth.actions.ts, service.actions.ts, team.actions.ts (implementados)
   /store              # Estado global del frontend (Zustand - ej. timerStore)
   /types              # Definiciones de tipos e interfaces TypeScript
 
@@ -131,8 +164,9 @@ Estructura basada en Next.js App Router, separando claramente la lógica de nego
 #       vitest.setup.ts, postcss.config.mjs, .prettierrc.json, .env.example
 ```
 
-`(auth)`, `(dashboard)/layout.tsx`, `(dashboard)/servicios` ya tienen lógica
-real — ver "Auth y Multi-Tenant" y "Catálogo de Servicios" más arriba.
+`(auth)`, `(dashboard)/layout.tsx`, `(dashboard)/servicios` y
+`(dashboard)/equipo` ya tienen lógica real — ver "Auth y Multi-Tenant",
+"Catálogo de Servicios" y "Gestión de Equipo" más arriba.
 `(dashboard)/agenda` sigue siendo un placeholder (spec futura). `caja/`,
 `estadisticas/`, `forms/`, `timers/`, `store/` siguen vacíos (`.gitkeep`):
 son el esqueleto para las próximas specs.

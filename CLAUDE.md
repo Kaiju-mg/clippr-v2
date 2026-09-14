@@ -88,4 +88,11 @@ Desactivar un servicio es un switch optimista (`useOptimistic`), no un
 borrado. Ver `docs/arquitectura.md` sección "Catálogo de Servicios" y
 `docs/decisiones.md`.
 
+Spec 03 (gestión de equipo, alta de barberos en `/equipo`) implementada y
+probada con Vitest (mocks de Supabase, incluyendo control de acceso por
+rol). Sin migraciones nuevas. No se corrió de punta a punta contra el
+proyecto real (crear un barbero real y loguearse con esa cuenta) en esta
+sesión. Ver `docs/arquitectura.md` sección "Gestión de Equipo" y
+`docs/decisiones.md`.
+
 El resto (agenda, caja, estadísticas) sigue siendo esqueleto sin lógica.

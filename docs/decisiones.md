@@ -232,3 +232,43 @@ desaparece para siempre; en los hechos es indistinguible de apagar el
 switch. Si más adelante hace falta un borrado permanente real (limpieza
 de datos, GDPR), hay que diseñarlo aparte — no está cubierto por este
 botón.
+
+## 2026-09-14 — Gestión de equipo: fila expandible en vez del `BarberFormModal` (bottom sheet) de la spec
+Elegido: `BarberInlineForm.tsx`, mismo patrón que `ServiceInlineForm.tsx` —
+"Agregar Barbero" abre el formulario arriba de la lista y "Editar" expande
+la fila in-place, sin overlay.
+Descartado: `BarberFormModal.tsx` como bottom sheet, tal como lo pedía
+`docs/specs/03-gestion-de-equipo.md` (sección 2).
+Por qué: la spec 03 se escribió antes de la decisión de dirección visual
+del 2026-09-14 (más arriba en este archivo), que abandonó el patrón
+modal/bottom-sheet para todo el catálogo y borró `Modal.tsx` por quedar sin
+uso. Implementar un bottom sheet nuevo solo para esta pantalla habría sido
+inconsistente con esa decisión ya tomada. Se le consultó al usuario antes
+de elegir (instrucción explícita de parar si algo de la spec no cerraba) y
+confirmó seguir el patrón de fila expandible.
+Costo: quien lea la spec 03 tal cual está escrita va a esperar un
+componente `BarberFormModal.tsx` que no existe; hay que leer esta entrada
+para entender por qué se llama distinto y se ve distinto.
+
+## 2026-09-14 — `createBarberAction`: `barbershop_id` explícito desde el perfil del dueño, no `default current_barbershop_id()`
+Elegido: `createBarberAction` lee primero el perfil (`id, barbershop_id,
+role`) del usuario autenticado y usa ese `barbershop_id` explícito en el
+`insert` a `public.users`, hecho con el cliente normal (sesión del dueño,
+con RLS) — no con el cliente admin.
+Descartado: agregarle a la columna `users.barbershop_id` un
+`default public.current_barbershop_id()`, igual al patrón ya usado en
+`services` (ver entrada del 2026-09-14 sobre `services.barbershop_id`).
+Por qué: ese patrón evita que un Server Action "confunda" o sobreescriba el
+tenant porque el valor nunca sale de la fila que se está creando en el
+propio `insert`. Acá el valor tampoco sale del cliente/payload (viene de
+una fila que el propio Server Action leyó del perfil del dueño, protegida
+por RLS), así que el riesgo que ese patrón evita no aplica. Se prefirió no
+tocar el schema de `users` para una spec que no pedía cambios de
+base de datos (sección 2 de la spec: "Opcional si ya existe de la Spec
+01"), y mantener la inserción del perfil en el cliente normal (no el
+admin) para que la policy `users_insert_same_barbershop` también corra
+como capa extra sobre el chequeo de rol.
+Costo: si en el futuro se agrega otro punto de inserción a `users` fuera de
+esta acción, ese código tiene que acordarse de setear `barbershop_id` a
+mano — a diferencia de `services`, acá no hay una red de seguridad a nivel
+de columna.
