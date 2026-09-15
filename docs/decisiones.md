@@ -403,3 +403,35 @@ saldo inicial de la caja de otro barbero (privacidad entre compañeros,
 no entre tenants), hay que agregar una policy de `SELECT` más estricta y
 ajustar cualquier pantalla que hoy asuma que puede leer `cash_sessions` de
 toda la barbería sin querer decir "todas son mías".
+
+**Revertida el mismo día — ver la entrada siguiente.** El "Costo" de arriba
+se terminó cumpliendo antes de terminar la sesión: era un riesgo real, no
+hipotético.
+
+## 2026-09-15 — `cash_sessions`: `SELECT` también acotado a `user_id = current_user_id()` (revierte la decisión anterior)
+Elegido: la policy `cash_sessions_select_own` (migración
+`20260915010000_cash_sessions_select_own_only.sql`) reemplaza a
+`cash_sessions_select_same_barbershop`. Ahora `SELECT`, `INSERT` y
+`UPDATE` exigen los tres `barbershop_id = current_barbershop_id() and
+user_id = current_user_id()` — un barbero no puede leer, abrir ni cerrar
+la caja de un compañero, ni siquiera dentro de la misma barbería.
+Descartado: mantener el `SELECT` tenant-wide de la entrada anterior.
+Por qué: advertencia del usuario — en la cultura de las barberías, cuánto
+factura cada barbero en el día suele ser información semiprivada entre
+compañeros, no algo que el dueño quiera exponer a todo el equipo. Con la
+policy anterior, el Barbero A podía leer el saldo del Barbero B con
+`supabase.from('cash_sessions').select('*')` desde la consola del
+navegador, usando su propia sesión ya autenticada — sin explotar nada,
+es la API pública del proyecto: RLS es la barrera real, no lo que la UI
+decide mostrar. Verificado con un script descartable contra el proyecto
+real: antes del fix el `SELECT` cruzado devolvía la fila; después, cero
+filas. Además, el razonamiento original ("pensando en reportes del dueño a
+futuro") pedía más acceso del que esa necesidad futura realmente requiere:
+cuando se construya la spec de estadísticas (backlog #8), lo correcto es
+que *solo el dueño* (`role = 'owner'`) vea las cajas ajenas, no cualquier
+barbero.
+Costo: cuando se implemente esa spec de estadísticas va a hacer falta una
+policy de `SELECT` nueva y más específica (ej. `user_id =
+current_user_id() OR (barbershop_id = current_barbershop_id() AND` el que
+consulta es dueño`)`) — no alcanza con volver a abrir el `SELECT` a toda
+la barbería como estaba.

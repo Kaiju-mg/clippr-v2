@@ -104,16 +104,18 @@ barbero real y loguearse con esa cuenta) en esta sesión.
 
 ### Sesión de Caja Diaria (implementado)
 
-Cuarta rebanada vertical (`docs/specs/04-sesion-de-caja-diaria.md`). Migración
-nueva: `20260915000000_create_cash_sessions_table.sql` (tabla
-`cash_sessions` + función `current_user_id()`), aplicada contra el proyecto
-real (`supabase db push`). Probado con Vitest (Supabase mockeado) **y** de
-punta a punta en el navegador contra el proyecto real: apertura y cierre,
-bloqueo de doble caja (índice único, incluso baipaseando el Server Action
-con un insert directo), y aislamiento tanto entre barberos de la misma
-barbería como entre barberías distintas (un usuario autenticado de otro
-tenant/barbero intentando `SELECT`/`UPDATE` la caja ajena directo contra
-Supabase, sin pasar por la UI — RLS lo bloquea en los dos casos).
+Cuarta rebanada vertical (`docs/specs/04-sesion-de-caja-diaria.md`).
+Migraciones: `20260915000000_create_cash_sessions_table.sql` (tabla
+`cash_sessions` + función `current_user_id()`) y
+`20260915010000_cash_sessions_select_own_only.sql` (corrige el `SELECT`,
+ver `decisiones.md`), ambas aplicadas contra el proyecto real
+(`supabase db push`). Probado con Vitest (Supabase mockeado) **y** de
+punta a punta en el navegador/scripts contra el proyecto real: apertura y
+cierre, bloqueo de doble caja (índice único, incluso baipaseando el Server
+Action con un insert directo), y aislamiento — entre barberos de la misma
+barbería y entre barberías distintas — tanto para `UPDATE` (cerrar la caja
+ajena) como para `SELECT` (leerla) directo contra Supabase, sin pasar por
+la UI.
 
 - **CRUD:** `src/actions/cash.actions.ts` (`getCurrentCashSessionAction`,
   `openCashSessionAction`, `closeCashSessionAction`). `openCashSessionAction`
@@ -125,13 +127,15 @@ Supabase, sin pasar por la UI — RLS lo bloquea en los dos casos).
   `openCashSessionAction` traduce la violación de ese índice (SQLSTATE
   `23505`) a un mensaje entendible en vez de un error 500 — la barrera real
   es la base de datos, no un chequeo previo en la acción.
-- **Permisos:** dentro de la misma barbería, cualquiera puede *ver* todas las
-  cajas (policy `cash_sessions_select_same_barbershop`, pensando en reportes
-  del dueño a futuro), pero solo el dueño de una caja puede abrirla o
-  cerrarla (`cash_sessions_insert_own` / `cash_sessions_update_own`, vía la
-  nueva función `current_user_id()`). `closeCashSessionAction` no filtra por
-  `user_id` a mano: si el `id` es de otro barbero, RLS bloquea el `update` y
-  se trata como "no encontrada".
+- **Permisos:** `SELECT`, `INSERT` y `UPDATE` están acotados al dueño de la
+  fila (`cash_sessions_select_own` / `cash_sessions_insert_own` /
+  `cash_sessions_update_own`, todas vía `current_user_id()` +
+  `current_barbershop_id()`) — un barbero no puede leer ni mutar la caja de
+  un compañero, ni siquiera dentro de la misma barbería. `closeCashSessionAction`
+  no filtra por `user_id` a mano: si el `id` es de otro barbero, RLS bloquea
+  el `update` y se trata como "no encontrada" (lo mismo pasaría con un
+  `SELECT` directo a la API). Ver `decisiones.md` 2026-09-15 — el `SELECT`
+  arrancó abierto a toda la barbería y se corrigió en la misma sesión.
 - **`end_time` y `final_balance`:** calculados en `closeCashSessionAction`
   (servidor), nunca mandados desde un Client Component. `final_balance`
   todavía iguala a `initial_balance` (no hay turnos/cobros que sumar — spec
