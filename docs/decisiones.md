@@ -435,3 +435,268 @@ policy de `SELECT` nueva y más específica (ej. `user_id =
 current_user_id() OR (barbershop_id = current_barbershop_id() AND` el que
 consulta es dueño`)`) — no alcanza con volver a abrir el `SELECT` a toda
 la barbería como estaba.
+
+## 2026-09-15 — `appointments`/`transactions`: mismo criterio estricto que `cash_sessions`, no "dueño ve todo" (spec 05)
+Elegido: `appointments_select_own` / `appointments_insert_own` exigen
+`barbershop_id = current_barbershop_id() and user_id = current_user_id()`,
+igual que `cash_sessions_select_own`. `transactions` no tiene columnas
+propias de tenant/usuario (no están en el modelo de `arquitectura.md`), así
+que su aislamiento se resuelve con un `EXISTS` contra `cash_sessions` en
+vez de policies directas — ver la entrada siguiente.
+Descartado: lo que pedía literalmente la spec 05 ("el dueño ve todo lo de
+su tenant, el barbero solo inserta/lee lo suyo"), que además se
+contradecía a sí misma al decir en la misma sección "patrón similar a
+`cash_sessions`" — `cash_sessions` hoy (ver la entrada de arriba) NO le da
+al dueño visibilidad de las cajas ajenas.
+Por qué: se le consultó al usuario porque la spec no cerraba sola (dos
+frases contradictorias). Eligió mantener el criterio estricto ya vigente
+en `cash_sessions` en vez de adelantar la funcionalidad "dueño ve todo el
+tenant" — evita reabrir la misma discusión de privacidad entre compañeros
+que ya se resolvió (y revirtió) el mismo día para `cash_sessions`, y no
+requiere inventar una función de verificación de rol nueva ahora mismo.
+Costo: igual que con `cash_sessions`, cuando se implemente la spec 08 de
+estadísticas va a hacer falta una policy nueva (`... OR es dueño`) para que
+el dueño pueda ver los turnos y transacciones de su equipo — no alcanza
+con lo que hay hoy.
+
+## 2026-09-15 — `transactions`: RLS vía `EXISTS` contra `cash_sessions`, sin denormalizar `user_id`/`barbershop_id`
+Elegido: `transactions_select_own` / `transactions_insert_own` usan
+`exists (select 1 from cash_sessions cs where cs.id =
+transactions.cash_session_id and cs.user_id = current_user_id() and
+cs.barbershop_id = current_barbershop_id())`. El `EXISTS` corre con los
+privilegios de quien consulta, así que ya queda acotado por la propia
+policy `cash_sessions_select_own` de la caja referenciada.
+Descartado: agregar columnas `user_id`/`barbershop_id` a `transactions`
+(con `default current_user_id()`/`default current_barbershop_id()`, mismo
+patrón que `appointments`) para poder escribir policies directas sin
+subquery.
+Por qué: el modelo de `Transaction` en `docs/arquitectura.md` (heredado de
+la spec original) no tiene esas columnas, solo `cash_session_id`. Agregar
+columnas nuevas solo para simplificar la policy hubiera sido un cambio de
+modelo no pedido por la spec 05; el `EXISTS` logra el mismo aislamiento
+estricto sin tocar el schema documentado.
+Costo: la policy es más cara de evaluar (un subquery por fila en vez de una
+comparación directa) y más difícl de leer que una comparación simple. Si
+`transactions` gana más políticas en el futuro (ej. la visibilidad de
+dueño de la entrada anterior), puede valer la pena reconsiderar la
+denormalización.
+
+## 2026-09-15 — `completeWalkinAction`: `amount` y `end_time` calculados en el servidor, nunca confiados del payload
+Elegido: el Server Action no recibe `amount` en el payload (a diferencia de
+lo que sugería la spec 05, sección 4): lee `services.price` por
+`serviceId` del lado del servidor y ese es el monto que se guarda en
+`transactions`. Tampoco recibe `endTime`: se calcula con
+`new Date().toISOString()` en el servidor, mismo criterio que
+`closeCashSessionAction` (`cash.actions.ts`). `startTime` sí viene del
+cliente (es el `startTime` local del timer de Zustand — no hay otra forma
+de que el servidor lo conozca, ver regla #3/#4 de `CLAUDE.md`).
+Descartado: implementar la firma tal cual la escribía la spec 05
+(`{ serviceId, startTime, endTime, cashSessionId, amount }`, confiando en
+`amount` y `endTime` del cliente).
+Por qué: la regla no negociable #1 de `CLAUDE.md` ("actualizar balance de
+caja... nunca calculado en el cliente") y el propio postmortem de v1
+(`docs/aprendizajes-v1.md`: "cualquier usuario puede alterar las
+peticiones HTTP y manipular la caja") describen exactamente este
+escenario. No se le consultó al usuario porque es una regla ya escrita,
+no una decisión de diseño abierta — se avisó igual antes de implementar.
+Costo: si en el futuro se necesita cobrar un monto distinto al precio de
+lista del servicio (descuento, propina, precio negociado), hay que
+diseñar ese campo aparte con su propia validación server-side — no alcanza
+con reabrir el parámetro `amount` del payload.
+
+## 2026-09-15 — Pantalla principal de walk-ins en `/inicio`, no en `(dashboard)/page.tsx`; redirect post-login actualizado
+Elegido: la pantalla de temporizadores vive en
+`src/app/(dashboard)/inicio/page.tsx` (ruta `/inicio`).
+`loginAction`/`registerOwnerAction` ahora redirigen a `/inicio` en vez de
+`/agenda` (`login/page.tsx`, `registro/page.tsx`, y sus tests).
+Descartado: `src/app/(dashboard)/page.tsx` como sugería la spec 05
+("la ruta principal de trabajo del barbero"), manteniendo el redirect a
+`/agenda`.
+Por qué: `(dashboard)` es un grupo de rutas (los paréntesis no cuentan
+para la URL), así que `(dashboard)/page.tsx` resuelve a la misma URL `/`
+que ya ocupa `src/app/page.tsx` (la landing pública del scaffolding) —
+Next.js tira error de ruta duplicada. Aparte, `/agenda` ya estaba
+reservado para la spec 06 ("Agenda de Turnos Programados", ver la entrada
+2026-09-13 "Redirect post-login/registro a `/agenda`" — "hay que
+reemplazarlo por completo cuando se implemente la spec de agenda", que es
+la 06, no esta). No se le consultó al usuario: es una restricción técnica
+real (colisión de rutas), no una decisión de diseño con trade-offs.
+Costo: cualquier lugar que todavía asuma `/agenda` como destino post-login
+(documentación, links) queda desactualizado; hay que revisarlo si se
+agrega navegación explícita entre pantallas del dashboard.
+
+## 2026-09-15 — `timerStore`: `persist` con `skipHydration: true` + rehidratación manual post-mount
+Elegido: el store de Zustand (`src/store/timerStore.ts`) usa
+`persist(..., { name: "clippr-timers", skipHydration: true })`, y expone
+`useTimerStoreHydrated()` — un hook que llama a
+`useTimerStore.persist.rehydrate()` dentro de un `useEffect` y devuelve
+`true` recién cuando termina. `TimerList` no renderiza la lista de timers
+(ni el aviso de "sin temporizadores") hasta que ese hook devuelve `true`.
+Descartado: `persist` con su comportamiento por defecto (rehidratar del
+`localStorage` de forma síncrona al crear el store).
+Por qué: en Next.js App Router el primer render de un Client Component
+también corre en el servidor (SSR), donde no existe `localStorage`. Si
+`persist` rehidratara de forma síncrona, el HTML del servidor (siempre
+`timers: []`) no coincidiría con el primer pintado del cliente (ya con los
+timers restaurados), y React tira un error de hydration mismatch — un
+gotcha conocido de `zustand/persist` en frameworks con SSR. Verificado en
+el navegador contra el proyecto real: sin este patrón no hubo error
+visible en la consola en las pruebas hechas, pero el patrón es el
+recomendado por la propia documentación de Zustand para evitarlo de raíz
+en vez de confiar en que React lo recupere silenciosamente.
+Costo: un frame extra donde la lista de timers no se pinta todavía
+(oculta hasta que `hasHydrated` es `true`), en vez de mostrar `[]` y
+luego "saltar" a los datos reales — la app tarda un instante más en
+mostrar temporizadores existentes tras un F5, aunque no hay parpadeo
+visible en la práctica.
+
+## 2026-09-15 — Navegación minimalista (spec 05.5): sin doc de spec previo, se escribió a partir del pedido en el chat
+Elegido: se creó `docs/specs/05.5-navegacion-minimalista.md` con el
+contenido del pedido antes de implementar, siguiendo el patrón spec-first
+ya establecido (specs 01-05).
+Descartado: implementar directo desde las instrucciones del chat sin
+dejar un doc de spec.
+Por qué: el usuario pidió "basándote en docs/specs/05.5-...", pero ese
+archivo no existía todavía — solo su mensaje lo describía. Se decidió
+formalizarlo como archivo en vez de preguntar, porque el propio pedido ya
+traía el nivel de detalle de una spec completa (pasos, regla de diseño
+estricta) y todas las specs anteriores del proyecto siguen ese patrón.
+Costo: ninguno relevante — es la forma esperada de trabajar en este repo.
+
+## 2026-09-15 — Barra de navegación: Inicio / Caja / Agenda / Más (no Estadísticas)
+Elegido: los 4 ítems fijos de `BottomNav.tsx` son Inicio (`Home`), Caja
+(`Wallet`), Agenda (`Calendar`) y Más (`MoreHorizontal`, con Servicios y
+Equipo adentro). `Estadísticas` queda fuera de la barra principal.
+Descartado: usar Estadísticas como 4to ítem en vez de Agenda.
+Por qué: el pedido del usuario no especificaba los 4 destinos ("los 4
+íconos mencionados" asumía un doc de spec que no existía, ver la entrada
+de arriba). `/agenda` ya tenía un placeholder (`(dashboard)/agenda/page.tsx`,
+spec 01) mientras que `/estadisticas` ni siquiera tiene `page.tsx`
+(carpeta vacía con `.gitkeep`) — usar Agenda evita crear una página nueva
+solo para no dejar un ícono roto. Además Agenda (spec 06) es el siguiente
+ítem del backlog después de esta rebanada, más alineado a un tab de uso
+diario que Estadísticas (cadencia mensual, spec 08).
+Costo: si más adelante se decide que Estadísticas sí necesita estar en la
+barra principal, hay que revisar el orden/cantidad de ítems (¿reemplaza a
+Agenda? ¿se suma un 5to?) — no hay una decisión tomada sobre eso todavía.
+
+## 2026-09-15 — `BottomNav`: ítem activo por color y por grosor de trazo, no solo por color
+Elegido: además de `text-accent` vs `text-muted`, el ícono activo usa
+`strokeWidth={2.25}` contra `1.75` del resto.
+Descartado: distinguir el ítem activo únicamente por color (como hace el
+switch de servicios o el borde de "editar" en equipo).
+Por qué: la regla estricta del pedido ("solo blanco, grises y Tinta para
+el ícono activo") no dejaba margen para un fondo o un badge de color
+distinto — con un solo canal de diferenciación (color, en una franja fija
+de 5 íconos pequeños) el contraste podía ser difícil de notar a la luz del
+día, uso real de una barbería. Variar el trazo no agrega un color nuevo,
+así que no rompe la regla, y da una segunda señal visual redundante.
+Costo: ninguno relevante — es una diferencia sutil de grosor, no un
+cambio de layout.
+
+## 2026-09-15 — Cabecera de `/inicio`: fetch de perfil propio en `page.tsx`, subtítulo estático sin números
+Elegido: `InicioPage` hace su propia consulta a `users` (mismo patrón que
+`(dashboard)/layout.tsx`: `auth.getUser()` + `.from("users").select("name").eq("auth_id", ...)`)
+para mostrar el nombre del barbero como título. El subtítulo es texto fijo
+("Cortes de hoy y tu racha"), sin números.
+Descartado: pasar el nombre desde `layout.tsx` (que ya lo consulta para el
+navbar superior) como prop/contexto; o mostrar un subtítulo con números de
+ejemplo (ej. "3 cortes hoy · racha de 5 días").
+Por qué: Next.js App Router no comparte datos entre un layout Server
+Component y sus páginas hijas sin pasar por cookies/contexto — duplicar
+una consulta liviana (`select name`) es más simple que armar ese
+mecanismo para un solo dato, siguiendo el mismo criterio de cada
+página resolviendo sus propios datos que ya usan `caja`, `servicios` y
+`equipo`. Números de ejemplo se descartaron porque `cortes/racha` todavía
+no tienen lógica real (spec 08): mostrar "3 cortes hoy" sin que sea cierto
+podría leerse como un dato real y no como un placeholder de diseño — un
+texto fijo sin cifras no genera esa confusión.
+Costo: si `/inicio` gana más pantallas hermanas que también necesiten el
+nombre del usuario, esa consulta se va a repetir — recién ahí valdría la
+pena compartirla (context, o pasarla por el layout).
+
+## 2026-09-15 — Tipografía: Inter reemplaza Work Sans + Zilla Slab
+Elegido: una sola familia (`Inter`, vía `next/font/google`) para
+`--font-sans` y `--font-display` en `globals.css`, cargada en
+`layout.tsx`. Se sacaron `Work_Sans` y `Zilla_Slab`.
+Descartado: `Geist` (fuente de Vercel, pedida explícitamente) — no está en
+el catálogo de `next/font/google` de la versión de Next instalada
+(15.5.x); sumar el paquete `geist` aparte se descartó para no meter una
+dependencia nueva solo por esto, ya que el propio pedido dejaba "o Inter"
+como alternativa válida. También se descartó mantener `Zilla Slab` para
+títulos/precios (opción "Outfit + Inter" quedó explorada en el Artifact
+como punto medio, sin implementar).
+Por qué: pedido explícito de una identidad más "tech/prolija" estilo
+Apple/Vercel, comparado primero en un Artifact ("Muestrario Clippr", con
+contenido real: cabecera de `/inicio`, precios en guaraníes) antes de
+tocar código, mismo criterio que la dirección visual del 14/09.
+Costo: se pierde el toque distintivo que daba `Zilla Slab` a precios y
+títulos — tipográficamente Clippr ahora se parece más a cualquier dev
+tool (Vercel/Linear) que a una barbería. Si más adelante se quiere
+recuperar identidad de marca ahí, "Outfit + Inter" quedó evaluada como
+opción intermedia.
+
+## 2026-09-15 — Íconos: trazo fino global en `BottomNav`
+Elegido: el `strokeWidth` inactivo baja de 1.75 a 1.5 (el activo se
+mantiene en 2.25).
+Descartado: relleno sólido, duotono con placa de fondo activo, y glifos
+geométricos — las tres quedaron exploradas en el Artifact pero no se
+llevaron a código.
+Por qué: mismo contrato ya documentado el 15/09 más arriba (distinguir el
+activo por color **y** grosor de trazo) — solo se afinan los números
+para que se sienta más liviano, sin agregar superficie de riesgo ni
+romper esa regla.
+Costo: ninguno relevante.
+
+## 2026-09-15 — Sistema de botones: jerarquía + `active:scale-95`
+Elegido: `Button.tsx` pasa a 4 variantes: `primary` (`bg-accent`),
+`secondary` (`bg-surface-2`, sin borde), `ghost` (solo texto) y `danger`
+(con borde, sin cambios). Las 4 suman `active:scale-95` (más
+`disabled:active:scale-100`). De paso se corrigieron los botones de
+submit de login/registro, que estaban en `bg-black` desde antes de la
+decisión de acento "Tinta" del 14/09 y nunca se habían migrado — ahora
+usan `<Button>`.
+Descartado: mantener `secondary` con borde (como estaba antes) — pasa a
+`bg-surface-2` para diferenciarse mejor de `ghost` y seguir la regla de
+"un solo botón gritón por pantalla".
+Por qué: pedido explícito de jerarquía de botones + sensación táctil
+nativa, sin sumar sombras (los bordes siguen siendo la única separación
+donde ya existían, salvo `danger`).
+Costo: es un cambio global vía el componente compartido — todo call-site
+con `variant="secondary"` cambió de aspecto (de borde a fondo gris) sin
+tocar cada archivo. A revisar si en algún lugar puntual el borde cumplía
+un propósito no documentado.
+
+## 2026-09-15 — Rediseño de `/inicio` y el layout del dashboard
+Elegido:
+- `(dashboard)/layout.tsx` pierde el `<nav>` superior (nombre de la
+  barbería + "Cerrar sesión"): el logout ya vive en `/mas`. La consulta a
+  `profile`/`barbershopName` y el import de `logoutAction` se borraron
+  con él — el layout ahora solo hace de guard de sesión.
+- La cabecera de `/inicio` pasa a "Hola, {nombre de pila}" + dos píldoras
+  monocromas (`bg-surface-2`, sin color nuevo) con ícono + texto ("Cortes
+  de hoy" / "Tu racha"), sin números.
+- La fila input-chico + botón-chico de `TimerList.tsx` se reemplaza por
+  un botón de ancho completo ("Iniciar corte") como CTA principal, con
+  `active:scale-[0.98]`. El input "Servicio (opcional)" se conserva, más
+  chico, arriba del botón.
+- El estilo final del botón es **contorno** (borde 1.5px en Tinta, fondo
+  blanco, texto e ícono en Tinta) — no relleno sólido.
+Descartado: emoji en el saludo, píldora "Racha" en naranja, y números
+hardcodeados ("0 cortes hoy") — las tres se propusieron en una primera
+pasada y se descartaron por chocar con reglas ya tomadas (cero emojis del
+14/09; naranja rechazado como acento el 14/09; "sin números" decidido el
+15/09, ver entrada de arriba). También se descartó sacar el input de
+servicio por completo: sigue siendo la única forma de distinguir timers
+concurrentes (`CLAUDE.md`, sección "Timers"). Para el botón en sí se
+probaron 4 variantes más (relleno con insignia circular, relleno sin
+insignia, compacto junto al input, franja con flecha) en el Artifact
+antes de elegir el contorno.
+Por qué: pedido explícito de una pantalla de inicio "premium", con un
+solo botón de acción grande y sin fricción para arrancar un walk-in; el
+contorno se eligió por sobre el relleno sólido porque ocupa el mismo
+espacio pero pesa menos visualmente en la pantalla.
+Costo: ninguna migración ni cambio de datos — es puramente visual/
+estructural. Al sacar la barra superior, el nombre de la barbería ya no
+se muestra en ningún lado del dashboard.
+visible en la práctica.

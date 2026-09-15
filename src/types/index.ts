@@ -51,7 +51,7 @@ export interface Appointment {
   id: string;
   barbershop_id: string;
   user_id: string;
-  client_name: string;
+  client_name: string | null;
   service_id: string;
   start_time: string;
   end_time: string;

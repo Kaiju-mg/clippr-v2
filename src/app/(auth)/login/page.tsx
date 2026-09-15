@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { loginAction } from "@/actions/auth.actions";
+import { Button } from "@/components/ui/Button";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -25,7 +26,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/agenda");
+    router.push("/inicio");
   }
 
   return (
@@ -73,13 +74,9 @@ export default function LoginPage() {
           </p>
         )}
 
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="rounded bg-black px-3 py-2 text-white disabled:opacity-50"
-        >
+        <Button type="submit" disabled={isLoading} className="w-full py-2.5">
           {isLoading ? "Ingresando..." : "Ingresar"}
-        </button>
+        </Button>
       </form>
 
       <p className="text-sm">

@@ -26,8 +26,8 @@
   --color-accent: var(--accent);
   --color-accent-strong: var(--accent-strong);
   --color-danger: var(--danger);
-  --font-sans: var(--font-work-sans);
-  --font-display: var(--font-zilla-slab);
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-inter);
 }
 
 body {

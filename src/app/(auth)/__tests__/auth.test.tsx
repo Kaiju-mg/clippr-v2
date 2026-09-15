@@ -75,7 +75,7 @@ describe("LoginPage", () => {
     expect(pushMock).not.toHaveBeenCalled();
   });
 
-  it("redirige a /agenda cuando el login es exitoso", async () => {
+  it("redirige a /inicio cuando el login es exitoso", async () => {
     vi.mocked(loginAction).mockResolvedValue({ success: true });
 
     render(<LoginPage />);
@@ -88,7 +88,7 @@ describe("LoginPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Ingresar" }));
 
-    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/agenda"));
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/inicio"));
   });
 });
 
@@ -129,7 +129,7 @@ describe("RegistroPage", () => {
         barbershopName: "Barbería Central",
       });
     });
-    expect(pushMock).toHaveBeenCalledWith("/agenda");
+    expect(pushMock).toHaveBeenCalledWith("/inicio");
   });
 
   it("muestra el mensaje de error si el correo ya está registrado", async () => {

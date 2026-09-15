@@ -51,8 +51,10 @@ Correr `npm run lint && npm run typecheck && npm test` antes de dar una tarea po
 src/app/                 rutas (App Router)
   api/health/route.ts    health check (no toca DB ni auth)
   (auth)/                login/registro
-  (dashboard)/           layout + agenda, caja, estadisticas
-src/components/          ui/ · forms/ · timers/
+  (dashboard)/           layout (navbar + BottomNav) + inicio, caja,
+                          servicios, equipo, mas, agenda (placeholder),
+                          estadisticas (vacío)
+src/components/          ui/ (incluye BottomNav) · forms/ · timers/
 src/lib/supabase/        client.ts (browser)  ·  server.ts (Server Components/Actions/Route Handlers)
 src/lib/utils.ts
 src/actions/             Server Actions — toda mutación sensible va acá
@@ -100,8 +102,50 @@ probada con Vitest (mocks de Supabase) y de punta a punta en el navegador
 contra el proyecto real, incluyendo bloqueo de doble caja y aislamiento
 entre barberos y entre barberías. Migración
 (`20260915000000_create_cash_sessions_table.sql`, tabla `cash_sessions` +
-función `current_user_id()`) aplicada. `final_balance` por ahora iguala a
-`initial_balance` (no hay turnos/cobros que sumar — spec futura). Ver
-`docs/arquitectura.md` sección "Sesión de Caja Diaria" y `docs/decisiones.md`.
+función `current_user_id()`) aplicada. `final_balance` iguala a
+`initial_balance` — esto quedó desactualizado con la spec 05: hoy ya
+existen cobros (`transactions`) pero el cierre de caja todavía no los
+suma, ver deuda técnica de "Alta Prioridad" en `docs/deuda-tecnica.md`.
+Ver `docs/arquitectura.md` sección "Sesión de Caja Diaria" y
+`docs/decisiones.md`.
 
-El resto (agenda, estadísticas) sigue siendo esqueleto sin lógica.
+Spec 05 (flujo de walk-ins y temporizador, `/inicio`) implementada y
+probada con Vitest (mocks de Supabase) y de punta a punta en el navegador
+contra el proyecto real: crear servicio, abrir caja, iniciar un
+temporizador, sobrevivir a un F5 con el tiempo corriendo (persistencia de
+Zustand), finalizar y cobrar (verificado el `appointment` y la
+`transaction` resultantes directo contra la base), y el bloqueo de cobro
+sin caja abierta. Migración
+(`20260916000000_create_appointments_and_transactions.sql`, tablas
+`appointments` y `transactions`) aplicada. La pantalla principal del
+barbero quedó en `/inicio` (no en `/agenda`, reservado para la spec 06) y
+el redirect post-login/registro se actualizó a esa ruta. RLS de
+`appointments`/`transactions` sigue el mismo criterio estricto que
+`cash_sessions` (ni el dueño ve lo ajeno todavía). Ver
+`docs/arquitectura.md` sección "Flujo de Walk-ins y Temporizador" y
+`docs/decisiones.md`.
+
+Spec 05.5 (navegación minimalista) implementada y probada en el navegador
+contra el proyecto real: barra de navegación inferior fija con 4 íconos
+(`lucide-react`) — Inicio, Caja, Agenda, Más — y `(dashboard)/mas` con
+los links a Servicios/Equipo y Cerrar sesión. Ver `docs/arquitectura.md`
+sección "Navegación Minimalista" y `docs/decisiones.md`.
+
+Refinamiento de dirección visual (2026-09-15, no es una spec nueva del
+backlog) probado en el navegador contra el proyecto real: tipografía
+única (`Inter`, reemplaza `Zilla Slab` + `Work Sans`), trazo fino en los
+íconos de `BottomNav` (1.5/2.25), sistema de botones con jerarquía
+primary/secondary/ghost/danger y `active:scale-95` en `Button.tsx`
+(incluye el fix de los submits de login/registro que seguían en
+`bg-black`), y rediseño de `(dashboard)/layout.tsx` + `/inicio`: sin
+barra superior, cabecera "Hola, {nombre}" con píldoras monocromas sin
+números, y un botón "Iniciar corte" de ancho completo con estilo
+contorno. Explorado primero en un Artifact ("Muestrario Clippr") antes
+de tocar código. Quedaron pendientes de confirmación cuatro
+inconsistencias chicas en `/equipo` (casing de botón, "Correo" vs
+"Email", 0% de comisión mostrado para el dueño, `text-red-600` suelto) —
+ver `docs/deuda-tecnica.md`. Ver `docs/arquitectura.md` sección "Sistema
+de Diseño" y `docs/decisiones.md`.
+
+El resto (agenda de turnos programados, productos, estadísticas) sigue
+siendo esqueleto sin lógica.

@@ -1,7 +1,12 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { logoutAction } from "@/actions/auth.actions";
+import { BottomNav } from "@/components/ui/BottomNav";
 
+/**
+ * Sin barra superior a propósito (spec 05.5 en adelante): el nombre de la
+ * barbería no aporta nada una vez logueado, y "Cerrar sesión" ya vive en
+ * `/mas`. Esta capa solo hace de guard de sesión para todo el grupo.
+ */
 export default async function DashboardLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -14,25 +19,10 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
-    .from("users")
-    .select("name, barbershops(name)")
-    .eq("auth_id", user.id)
-    .single<{ name: string; barbershops: { name: string } | null }>();
-
-  const barbershopName = profile?.barbershops?.name ?? "Clippr";
-
   return (
-    <div className="min-h-screen">
-      <nav className="flex items-center justify-between border-b px-4 py-3">
-        <span className="font-semibold">{barbershopName}</span>
-        <form action={logoutAction}>
-          <button type="submit" className="text-sm underline">
-            Cerrar sesión
-          </button>
-        </form>
-      </nav>
-      <main>{children}</main>
+    <div className="min-h-screen bg-background">
+      <main className="pb-16">{children}</main>
+      <BottomNav />
     </div>
   );
 }

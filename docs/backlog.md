@@ -2,40 +2,62 @@
 
 Este backlog divide el desarrollo en rebanadas verticales. Cada iteración entregará una funcionalidad completa, desde la base de datos hasta la interfaz de usuario. Están ordenadas por dependencia (no puedes construir la caja sin tener usuarios, ni turnos sin tener servicios).
 
-### 1. Infraestructura Base, Auth y Multi-Tenant
+### 1. Infraestructura Base, Auth y Multi-Tenant (implementado)
 La fundación del sistema. Sin esto, no hay separación entre barberías.
 - **Modelo:** `Barbershop`, `User` (perfil dueño).
 - **Server Action:** Registro de cuenta, Login, Creación de la Barbería asociada.
 - **UI:** Setup de Next.js + PWA (manifest.json), Páginas de Login/Registro, Layout principal vacío con Navbar (Mobile First).
 - **Test:** Flujo de registro e inicio de sesión. Verificación de creación automática del tenant.
 
-### 2. Catálogo de Servicios 👈 *[LA MÁS CHICA PARA EMPEZAR DESPUÉS DEL SETUP]*
+Ver `docs/arquitectura.md` sección "Auth y Multi-Tenant".
+
+### 2. Catálogo de Servicios (implementado)
 Ideal para probar tu stack end-to-end (Next.js -> Server Actions -> Supabase RLS) de forma sencilla antes de meterte en la lógica compleja.
 - **Modelo:** `Service`.
 - **Server Action:** Crear, Leer, Actualizar y Borrar (CRUD) servicios.
 - **UI:** Pantalla `/servicios` con lista, botón y modal/formulario para agregar un corte/servicio y su precio.
 - **Test:** Un dueño crea un servicio. Validar mediante Row Level Security (RLS) que una barbería A no puede ver los servicios de la barbería B.
 
-### 3. Gestión del Equipo (Barberos)
+Ver `docs/arquitectura.md` sección "Catálogo de Servicios".
+
+### 3. Gestión del Equipo (Barberos) (implementado)
 Permite al dueño tener empleados para luego asignarles turnos y cajas.
 - **Modelo:** `User` (roles: owner, barber).
 - **Server Action:** Crear barbero, listar equipo, editar comisión.
 - **UI:** Pantalla `/equipo` con lista de barberos, formulario para agregar un empleado, asignar rol y nivel (Junior, Pro).
 - **Test:** Probar que el dueño puede crear barberos en su tenant y que estos puedan iniciar sesión.
 
-### 4. Sesión de Caja Diaria (Apertura y Cierre)
+Ver `docs/arquitectura.md` sección "Gestión de Equipo".
+
+### 4. Sesión de Caja Diaria (Apertura y Cierre) (implementado)
 El núcleo financiero diario para cada barbero.
 - **Modelo:** `CashSession`.
 - **Server Action:** Abrir caja (validar que no haya otra abierta), Cerrar caja (calcular balance final).
 - **UI:** Pantalla `/caja` que muestra estado actual. Botón gigante de "Abrir Caja" con input de saldo inicial. Botón de "Cerrar Caja".
 - **Test:** Un barbero no puede abrir dos cajas al mismo tiempo. Al cerrar, el `status` cambia a closed.
 
-### 5. Flujo de "Walk-ins" y Temporizador
+Ver `docs/arquitectura.md` sección "Sesión de Caja Diaria".
+
+### 5. Flujo de "Walk-ins" y Temporizador (implementado)
 El "core feature" de uso constante en la barbería.
 - **Modelo:** `Appointment` (estado `completed`, tipo `walkin`).
 - **Server Action:** Guardar turno completado y sumar monto al balance de la `CashSession` activa.
 - **UI:** Pantalla principal del barbero. Temporizador múltiple usando Zustand (persistencia local). Al finalizar el timer, formulario rápido (Seleccionar Servicio -> Cobrar).
 - **Test:** Simular recarga de página (F5) para asegurar que el temporizador no se pierde (Zustand persist). Guardar corte y verificar que el monto impacta la caja del barbero.
+
+Ver `docs/arquitectura.md` sección "Flujo de Walk-ins y Temporizador".
+
+### 5.5. Navegación Minimalista (implementado)
+Rebanada chica, no prevista en el backlog original: sin esto, el dashboard
+era un conjunto de pantallas sueltas sin forma de moverse entre ellas
+salvo escribiendo la URL a mano.
+- **UI:** Barra de navegación inferior fija (Inicio, Caja, Agenda, Más) y
+  pantalla `/mas` con los accesos a Servicios, Equipo y Cerrar sesión.
+
+Ver `docs/arquitectura.md` sección "Navegación Minimalista" y
+`docs/specs/05.5-navegacion-minimalista.md`. Refinada visualmente el
+2026-09-15 (tipografía, íconos, botones, cabecera de `/inicio`) — ver
+`docs/arquitectura.md` sección "Sistema de Diseño" y `docs/decisiones.md`.
 
 ### 6. Agenda de Turnos Programados
 Para los clientes que reservan con anticipación.

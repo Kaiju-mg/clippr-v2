@@ -37,7 +37,7 @@ Primera rebanada vertical (`docs/specs/01-infra-auth-multitenant.md`), probada d
 - **Alta de dueño + barbería:** `registerOwnerAction` (`src/actions/auth.actions.ts`) llama a `supabase.auth.signUp()` y, con la sesión ya activa, al RPC `register_owner` (`SECURITY DEFINER`, ver `supabase/migrations/`), que crea `barbershops` y `users` en una sola transacción. Si algo falla no queda un usuario de Auth "fantasma" sin perfil. `loginAction` y `logoutAction` completan el flujo (`logoutAction` redirige a `/login`).
 - **RLS:** habilitado en `barbershops` y `users`. Las políticas usan la función `public.current_barbershop_id()` (`SECURITY DEFINER`) en vez de un `EXISTS` directo contra `users`, para evitar recursión de RLS.
 - **Migraciones versionadas:** `supabase/migrations/` con el Supabase CLI (`supabase init` + `supabase link`). El proyecto real está linkeado; las credenciales viven en `.env.local` (no versionado).
-- **Páginas:** `(auth)/login`, `(auth)/registro` (formularios controlados, sin librería de forms) y `(dashboard)/layout.tsx` (guard de sesión server-side vía `supabase.auth.getUser()` + navbar con el nombre de la barbería y logout). Tras login/registro exitoso se redirige a `/agenda`, que por ahora es un placeholder (la lógica de turnos es de una spec futura).
+- **Páginas:** `(auth)/login`, `(auth)/registro` (formularios controlados, sin librería de forms) y `(dashboard)/layout.tsx` (guard de sesión server-side vía `supabase.auth.getUser()`; sin navbar propia desde el 2026-09-15 — ver "Sistema de Diseño"). Tras login/registro exitoso se redirige a `/inicio` (cambiado de `/agenda` en la spec 05 — ver "Flujo de Walk-ins y Temporizador" más abajo y `decisiones.md`).
 - **"Confirm email" desactivado** en el proyecto de Supabase por ahora (ver `decisiones.md` — hay que revisarlo antes de tener usuarios reales).
 
 ### Catálogo de Servicios (implementado)
@@ -66,9 +66,9 @@ aislamiento de tenant con dos barberías.
 - **Precio en guaraníes:** `price` es `integer` (sin decimales — el PYG no
   tiene subunidad) y se muestra con `formatGuaranies()` (`src/lib/utils.ts`).
 - **Dirección visual (spec 02):** tema claro fijo (sin `prefers-color-scheme`),
-  acento "Tinta" (`#1f3a5f`), tipografías `Zilla Slab` + `Work Sans` vía
-  `next/font/google`. Tokens en `src/app/globals.css`. Ver `decisiones.md`
-  2026-09-14.
+  acento "Tinta" (`#1f3a5f`). Tokens en `src/app/globals.css`. Ver
+  `decisiones.md` 2026-09-14. Tipografía actualizada el 2026-09-15 — ver
+  sección "Sistema de Diseño" más abajo.
 
 ### Gestión de Equipo (implementado)
 
@@ -138,8 +138,12 @@ la UI.
   arrancó abierto a toda la barbería y se corrigió en la misma sesión.
 - **`end_time` y `final_balance`:** calculados en `closeCashSessionAction`
   (servidor), nunca mandados desde un Client Component. `final_balance`
-  todavía iguala a `initial_balance` (no hay turnos/cobros que sumar — spec
-  futura). Ver `decisiones.md` 2026-09-15 sobre por qué esto vive en el
+  todavía iguala a `initial_balance` — esto era correcto cuando se escribió
+  (spec 04, antes de que existieran cobros), pero **desde la spec 05 ya no
+  lo es**: `completeWalkinAction` genera filas en `transactions` que
+  `closeCashSessionAction` no suma todavía. Es un gap funcional real, no
+  una spec futura — ver `docs/deuda-tecnica.md` ("Alta Prioridad"). Ver
+  también `decisiones.md` 2026-09-15 sobre por qué el cálculo vive en el
   Server Action y no en un trigger de Postgres.
 - **UI:** `(dashboard)/caja/page.tsx` (Server Component) decide entre
   `_components/OpenCashView.tsx` (si no hay caja abierta) y el dashboard de
@@ -153,6 +157,128 @@ la UI.
   desbordaba el contenedor y recortaba el número en pantallas anchas). Ver
   `decisiones.md` 2026-09-15 (dos entradas: tamaño de letra y separador de
   miles).
+
+### Flujo de Walk-ins y Temporizador (implementado)
+
+Quinta rebanada vertical (`docs/specs/05-flujo-walkins-temporizador.md`).
+Migración `20260916000000_create_appointments_and_transactions.sql`
+(tablas `appointments` y `transactions`) aplicada contra el proyecto real
+(`supabase db push`). Probado con Vitest (Supabase mockeado) **y** de
+punta a punta en el navegador contra el proyecto real: crear un servicio,
+abrir caja, iniciar un temporizador, sobrevivir a un F5 con el tiempo
+corriendo, finalizar y cobrar (verificado el `appointment` y la
+`transaction` resultantes directo contra la base), y el bloqueo de cobro
+sin caja abierta.
+
+- **Timers en Zustand, nunca en el servidor:** `src/store/timerStore.ts`
+  guarda un arreglo de `{ id, startTime, label? }` con `persist` en
+  `localStorage` — nunca los segundos transcurridos (eso se calcula en un
+  `useEffect` local de `TimerCard.tsx`, comparando contra `Date.now()` cada
+  segundo, para no re-renderizar toda la app cada tick). El store usa
+  `persist(..., { skipHydration: true })` más el hook
+  `useTimerStoreHydrated()` para rehidratar recién después del mount y
+  evitar un hydration mismatch de SSR/Next.js (el HTML del servidor nunca
+  tiene acceso a `localStorage`). Ver `docs/decisiones.md` 2026-09-15.
+- **RLS estricta, igual que `cash_sessions`:** `appointments_select_own` /
+  `appointments_insert_own` exigen `user_id = current_user_id()` además de
+  `barbershop_id = current_barbershop_id()` — ni el dueño ve turnos ajenos
+  todavía (queda para la spec 08 de estadísticas). `transactions` no tiene
+  columnas propias de tenant/usuario (sigue el modelo original, solo
+  `cash_session_id`): su aislamiento se resuelve con un `EXISTS` contra
+  `cash_sessions` dentro de la policy. Ver `docs/decisiones.md` 2026-09-15
+  (dos entradas: la decisión de RLS y la del `EXISTS`).
+- **`completeWalkinAction`** (`src/actions/walkin.actions.ts`): verifica
+  que la caja (`cashSessionId`) esté abierta y sea propia (RLS la trata
+  como "no encontrada" si no), busca el servicio por `serviceId` y exige
+  que esté activo, inserta el `appointment` (`status: "completed"`) y
+  después la `transaction` (`type: "income"`). El monto nunca viene del
+  cliente: es `services.price` leído en el servidor, y `end_time` se
+  calcula con el reloj del servidor (mismo criterio que
+  `closeCashSessionAction`) — a diferencia de lo que sugería la spec 05,
+  que pasaba `amount`/`endTime` en el payload. `start_time` sí viene del
+  cliente (es el `startTime` del timer local, la única fuente posible). Sin
+  RPC atómico: son dos inserts separados; si el segundo falla se devuelve
+  un error explícito para revisar el desfase a mano (deuda técnica
+  documentada en la spec y en `docs/deuda-tecnica.md`).
+- **UI:** `(dashboard)/inicio/page.tsx` (`/inicio`, no `(dashboard)/page.tsx`
+  — esa ruta colisiona con la landing pública `src/app/page.tsx`; ver
+  `docs/decisiones.md`) reemplaza a `/agenda` como destino post-login/
+  registro (`/agenda` queda reservado para la spec 06, "Agenda de Turnos
+  Programados"). `TimerList.tsx` (iniciar temporizadores + lista),
+  `TimerCard.tsx` (cronómetro individual) y `FinishWalkinForm.tsx`
+  (selección de servicio y cobro, in-line al pie de la card, sin modal —
+  mismo patrón visual que servicios/equipo/caja) en
+  `src/components/timers/`. Sin caja abierta, `FinishWalkinForm` bloquea el
+  cobro con un aviso y un link a `/caja` en vez de mostrar el formulario.
+
+### Navegación Minimalista (implementado)
+
+Spec 05.5 (`docs/specs/05.5-navegacion-minimalista.md`). Conecta las
+pantallas del dashboard con una barra de navegación inferior fija
+(mobile-first), en vez de depender de URLs escritas a mano.
+
+- **`BottomNav.tsx`** (`src/components/ui/`, Client Component — necesita
+  `usePathname()`): 4 ítems fijos con íconos de
+  [`lucide-react`](https://lucide.dev/) — Inicio (`Home`, `/inicio`), Caja
+  (`Wallet`, `/caja`), Agenda (`Calendar`, `/agenda`) y Más
+  (`MoreHorizontal`, `/mas`). El ítem activo se distingue por color
+  (acento "Tinta") **y** por el grosor de trazo del ícono, no solo por
+  color — pensado para uso a la luz del día. `(dashboard)/layout.tsx` la
+  renderiza debajo de `<main>`, que ahora tiene `pb-16` para que el
+  contenido no quede tapado detrás de la barra fija.
+- **`(dashboard)/mas/page.tsx`:** catch-all para lo que no es de uso
+  diario — links a `/servicios` y `/equipo`, más "Cerrar sesión" (reusa
+  `logoutAction`). Desde el 2026-09-15 es el **único** lugar con
+  "Cerrar sesión": la barra superior que lo duplicaba se eliminó, ver
+  "Sistema de Diseño" más abajo.
+  `Estadísticas` queda fuera tanto de la barra principal como de `/mas`
+  hasta que tenga lógica real (spec 08) — ver `docs/decisiones.md`.
+- **Cabecera de `/inicio`:** rediseñada el 2026-09-15, ver "Sistema de
+  Diseño" más abajo para el estado actual.
+
+### Sistema de Diseño: Tipografía, Íconos y Botones (implementado)
+
+Pasada de refinamiento visual del 2026-09-15 sobre specs ya implementadas
+(no es una spec nueva del backlog). Explorada primero en un Artifact
+("Muestrario Clippr", varias rondas de comparación) antes de tocar código
+real, mismo criterio que la dirección visual del 14/09. Ver
+`docs/decisiones.md` (varias entradas 2026-09-15).
+
+- **Tipografía — Inter reemplaza `Zilla Slab` + `Work Sans`:** una sola
+  familia para todo (`src/app/layout.tsx`, vía `next/font/google`).
+  `--font-sans` y `--font-display` en `globals.css` apuntan las dos a
+  `--font-inter`, así que todo lo que ya usaba la clase `font-display`
+  (precios, encabezados) hereda el cambio sin tocar cada componente.
+  `Geist` (alternativa evaluada) no está en el catálogo de
+  `next/font/google` de la versión de Next instalada.
+- **Íconos — trazo fino global:** `BottomNav.tsx` baja el `strokeWidth`
+  inactivo de 1.75 a 1.5 (el activo se mantiene en 2.25) — mismo
+  contrato de color + grosor ya documentado el 15/09, solo afinado.
+- **Botones — jerarquía + micro-interacción táctil:**
+  `src/components/ui/Button.tsx` tiene 4 variantes: `primary`
+  (`bg-accent`), `secondary` (`bg-surface-2`, sin borde), `ghost` (solo
+  texto) y `danger` (con borde, sin cambios). Las cuatro suman
+  `active:scale-95` (CSS puro, sin JS) para sensación de app nativa.
+  Los botones de submit de login/registro, que quedaban en `bg-black`
+  desde antes de que existiera el acento "Tinta", se migraron a
+  `<Button>`.
+- **`(dashboard)/layout.tsx` sin barra superior:** el `<nav>` con el
+  nombre de la barbería y "Cerrar sesión" se eliminó — el logout ya vive
+  en `/mas`. El layout ahora solo hace de guard de sesión
+  (`auth.getUser()` + redirect) antes de `<main>` + `<BottomNav />`.
+- **Cabecera de `/inicio`:** "Hola, {nombre de pila}" (sin emoji) más dos
+  píldoras monocromas (`bg-surface-2`, ícono + texto: "Cortes de hoy" /
+  "Tu racha") **sin números** — se mantiene a propósito el criterio del
+  15/09 de no mostrar cifras hasta que exista lógica real (spec 08); un
+  "0" fijo se leería como dato real y siempre diría lo mismo.
+- **CTA "Iniciar corte" (`TimerList.tsx`):** reemplaza la fila
+  input-chico + botón-chico por un botón de ancho completo con
+  `active:scale-[0.98]`, estilo **contorno** (borde 1.5px en Tinta,
+  fondo blanco, sin relleno sólido) — se probaron 4 variantes más
+  (relleno con insignia circular, relleno sin insignia, compacto junto
+  al input, franja con flecha) en el Artifact antes de elegir esta. El
+  input "Servicio (opcional)" se conserva, más chico, arriba del botón:
+  sigue siendo la única forma de distinguir timers concurrentes.
 
 ## Modelo de Datos
 
@@ -169,7 +295,10 @@ Entidades principales enfocadas en resolver el modelo Multi-Tenant, los turnos y
     decimales), `duration_minutes`, `is_active` (activar/desactivar
     reversible desde la UI, no borrado — ver `decisiones.md`)
 - **Appointment (Turno / Corte):**
-  - `id`, `barbershop_id`, `user_id` (barbero asignado), `client_name`, `service_id`, `start_time`, `end_time`, `status` (scheduled, walkin, completed, cancelled)
+  - `id`, `barbershop_id`, `user_id` (barbero asignado), `client_name`
+    (nullable — ej. "Cliente de paso"), `service_id`, `start_time`,
+    `end_time`, `status` (scheduled, walkin, completed, cancelled — en la
+    práctica hoy solo se inserta con `completed`, ver "Flujo de Walk-ins")
 - **CashSession (Sesión de Caja Diaria por Barbero):**
   - `id`, `barbershop_id`, `user_id`, `start_time`, `end_time`, `initial_balance`, `final_balance`, `status` (open, closed)
   - `end_time` y `final_balance` son `null` mientras `status` = `open`.
@@ -197,33 +326,38 @@ Estructura basada en Next.js App Router, separando claramente la lógica de nego
       /health         # Health check (GET /api/health)
     /(auth)           # login/ y registro/ (implementado)
       /__tests__      # auth.test.tsx (Vitest + Testing Library)
-    /(dashboard)      # Layout (guard de sesión + navbar, implementado)
-      /agenda         # Placeholder — vista y gestión de turnos (spec futura)
+    /(dashboard)      # Layout (guard de sesión + BottomNav, implementado)
+      /inicio         # Timers + walk-ins, pantalla principal del barbero (implementado, spec 05)
+      /agenda         # Placeholder — turnos programados (spec 06, futura)
       /servicios      # Catálogo de servicios (implementado, spec 02)
       /equipo         # Gestión de equipo/barberos (implementado, spec 03)
       /caja           # Apertura/cierre de CashSessions (implementado, spec 04)
-      /estadisticas   # Reportes e insights (vacío, .gitkeep)
+      /mas            # Catch-all: Servicios, Equipo, Cerrar sesión (implementado, spec 05.5)
+      /estadisticas   # Reportes e insights (vacío, .gitkeep — fuera de la barra por ahora)
   /components
-    /ui               # Componentes base reutilizables (Button, Input, Switch)
+    /ui               # Componentes base reutilizables (Button, Input, Switch, BottomNav)
     /forms            # Formularios de la aplicación
-    /timers           # Lógica visual de los temporizadores
+    /timers           # TimerList.tsx, TimerCard.tsx, FinishWalkinForm.tsx (implementado, spec 05)
   /lib
     /supabase         # Clientes de Supabase: client.ts (browser), server.ts (servidor), admin.ts (Service Role Key, solo servidor)
     utils.ts          # Funciones utilitarias generales (incluye formatGuaranies)
-  /actions            # Server Actions — auth.actions.ts, service.actions.ts, team.actions.ts, cash.actions.ts (implementados)
-  /store              # Estado global del frontend (Zustand - ej. timerStore)
+  /actions            # Server Actions — auth.actions.ts, service.actions.ts, team.actions.ts, cash.actions.ts, walkin.actions.ts (implementados)
+  /store              # Estado global del frontend (Zustand) — timerStore.ts (implementado, spec 05)
   /types              # Definiciones de tipos e interfaces TypeScript
 
 # Raíz: next.config.ts, tsconfig.json, eslint.config.mjs, vitest.config.ts,
 #       vitest.setup.ts, postcss.config.mjs, .prettierrc.json, .env.example
 ```
 
-`(auth)`, `(dashboard)/layout.tsx`, `(dashboard)/servicios`,
-`(dashboard)/equipo` y `(dashboard)/caja` ya tienen lógica real — ver "Auth
-y Multi-Tenant", "Catálogo de Servicios", "Gestión de Equipo" y "Sesión de
-Caja Diaria" más arriba. `(dashboard)/agenda` sigue siendo un placeholder
-(spec futura). `estadisticas/`, `forms/`, `timers/`, `store/` siguen vacíos
-(`.gitkeep`): son el esqueleto para las próximas specs.
+`(auth)`, `(dashboard)/layout.tsx`, `(dashboard)/inicio`,
+`(dashboard)/servicios`, `(dashboard)/equipo`, `(dashboard)/caja` y
+`(dashboard)/mas` ya tienen lógica real — ver "Auth y Multi-Tenant",
+"Flujo de Walk-ins y Temporizador", "Navegación Minimalista", "Sistema de
+Diseño", "Catálogo de Servicios", "Gestión de Equipo" y "Sesión de Caja
+Diaria" más arriba.
+`(dashboard)/agenda` sigue siendo un placeholder (spec 06, futura, aunque
+ya forma parte de la barra de navegación). `estadisticas/` y `forms/`
+siguen vacíos (`.gitkeep`): son el esqueleto para las próximas specs.
 
 ## Las 3 Decisiones Técnicas Más Riesgosas y su Alternativa
 
