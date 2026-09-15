@@ -95,4 +95,13 @@ proyecto real (crear un barbero real y loguearse con esa cuenta) en esta
 sesión. Ver `docs/arquitectura.md` sección "Gestión de Equipo" y
 `docs/decisiones.md`.
 
-El resto (agenda, caja, estadísticas) sigue siendo esqueleto sin lógica.
+Spec 04 (sesión de caja diaria, apertura/cierre en `/caja`) implementada y
+probada con Vitest (mocks de Supabase) y de punta a punta en el navegador
+contra el proyecto real, incluyendo bloqueo de doble caja y aislamiento
+entre barberos y entre barberías. Migración
+(`20260915000000_create_cash_sessions_table.sql`, tabla `cash_sessions` +
+función `current_user_id()`) aplicada. `final_balance` por ahora iguala a
+`initial_balance` (no hay turnos/cobros que sumar — spec futura). Ver
+`docs/arquitectura.md` sección "Sesión de Caja Diaria" y `docs/decisiones.md`.
+
+El resto (agenda, estadísticas) sigue siendo esqueleto sin lógica.

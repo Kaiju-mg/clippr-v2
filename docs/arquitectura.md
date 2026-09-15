@@ -102,6 +102,54 @@ barbero real y loguearse con esa cuenta) en esta sesión.
   muestran si `isOwner`; la fila del dueño se lista pero no es editable
   desde acá.
 
+### Sesión de Caja Diaria (implementado)
+
+Cuarta rebanada vertical (`docs/specs/04-sesion-de-caja-diaria.md`). Migración
+nueva: `20260915000000_create_cash_sessions_table.sql` (tabla
+`cash_sessions` + función `current_user_id()`), aplicada contra el proyecto
+real (`supabase db push`). Probado con Vitest (Supabase mockeado) **y** de
+punta a punta en el navegador contra el proyecto real: apertura y cierre,
+bloqueo de doble caja (índice único, incluso baipaseando el Server Action
+con un insert directo), y aislamiento tanto entre barberos de la misma
+barbería como entre barberías distintas (un usuario autenticado de otro
+tenant/barbero intentando `SELECT`/`UPDATE` la caja ajena directo contra
+Supabase, sin pasar por la UI — RLS lo bloquea en los dos casos).
+
+- **CRUD:** `src/actions/cash.actions.ts` (`getCurrentCashSessionAction`,
+  `openCashSessionAction`, `closeCashSessionAction`). `openCashSessionAction`
+  no manda `user_id` ni `barbershop_id`: ambos se completan solos vía
+  `default` en la migración (`current_user_id()` / `current_barbershop_id()`),
+  mismo patrón que `services.barbershop_id`.
+- **Una sola caja abierta por usuario:** garantizado por el índice único
+  parcial `one_open_session_per_user` (`user_id` WHERE `status = 'open'`).
+  `openCashSessionAction` traduce la violación de ese índice (SQLSTATE
+  `23505`) a un mensaje entendible en vez de un error 500 — la barrera real
+  es la base de datos, no un chequeo previo en la acción.
+- **Permisos:** dentro de la misma barbería, cualquiera puede *ver* todas las
+  cajas (policy `cash_sessions_select_same_barbershop`, pensando en reportes
+  del dueño a futuro), pero solo el dueño de una caja puede abrirla o
+  cerrarla (`cash_sessions_insert_own` / `cash_sessions_update_own`, vía la
+  nueva función `current_user_id()`). `closeCashSessionAction` no filtra por
+  `user_id` a mano: si el `id` es de otro barbero, RLS bloquea el `update` y
+  se trata como "no encontrada".
+- **`end_time` y `final_balance`:** calculados en `closeCashSessionAction`
+  (servidor), nunca mandados desde un Client Component. `final_balance`
+  todavía iguala a `initial_balance` (no hay turnos/cobros que sumar — spec
+  futura). Ver `decisiones.md` 2026-09-15 sobre por qué esto vive en el
+  Server Action y no en un trigger de Postgres.
+- **UI:** `(dashboard)/caja/page.tsx` (Server Component) decide entre
+  `_components/OpenCashView.tsx` (si no hay caja abierta) y el dashboard de
+  caja abierta con `_components/CloseCashButton.tsx` (confirmación in-line
+  antes de cerrar, mismo patrón sin modal que el resto del dashboard).
+  `OpenCashView` es un input de texto (`inputMode="numeric"`) grande estilo
+  terminal POS, autofocus, con separador de miles en vivo
+  (`Intl.NumberFormat("es-PY")`, prefijo `"Gs."` en vez del símbolo `₲` —
+  `Zilla Slab` no tiene ese glifo) y tamaño de letra calculado en JS según
+  la cantidad de caracteres ya formateados (no un `clamp()` con `vw`, que
+  desbordaba el contenedor y recortaba el número en pantallas anchas). Ver
+  `decisiones.md` 2026-09-15 (dos entradas: tamaño de letra y separador de
+  miles).
+
 ## Modelo de Datos
 
 Entidades principales enfocadas en resolver el modelo Multi-Tenant, los turnos y la gestión individual de caja:
@@ -119,8 +167,10 @@ Entidades principales enfocadas en resolver el modelo Multi-Tenant, los turnos y
 - **Appointment (Turno / Corte):**
   - `id`, `barbershop_id`, `user_id` (barbero asignado), `client_name`, `service_id`, `start_time`, `end_time`, `status` (scheduled, walkin, completed, cancelled)
 - **CashSession (Sesión de Caja Diaria por Barbero):**
-  - `id`, `user_id`, `start_time`, `end_time`, `initial_balance`, `final_balance`, `status` (open, closed)
+  - `id`, `barbershop_id`, `user_id`, `start_time`, `end_time`, `initial_balance`, `final_balance`, `status` (open, closed)
   - `end_time` y `final_balance` son `null` mientras `status` = `open`.
+  - Índice único parcial `one_open_session_per_user` (`user_id` WHERE
+    `status = 'open'`): un usuario no puede tener más de una caja abierta.
 - **Transaction (Movimiento de Caja):**
   - `id`, `cash_session_id`, `type` (income, expense), `amount`, `description`, `created_at`
 
@@ -147,7 +197,7 @@ Estructura basada en Next.js App Router, separando claramente la lógica de nego
       /agenda         # Placeholder — vista y gestión de turnos (spec futura)
       /servicios      # Catálogo de servicios (implementado, spec 02)
       /equipo         # Gestión de equipo/barberos (implementado, spec 03)
-      /caja           # Gestión de CashSessions individuales (vacío, .gitkeep)
+      /caja           # Apertura/cierre de CashSessions (implementado, spec 04)
       /estadisticas   # Reportes e insights (vacío, .gitkeep)
   /components
     /ui               # Componentes base reutilizables (Button, Input, Switch)
@@ -156,7 +206,7 @@ Estructura basada en Next.js App Router, separando claramente la lógica de nego
   /lib
     /supabase         # Clientes de Supabase: client.ts (browser), server.ts (servidor), admin.ts (Service Role Key, solo servidor)
     utils.ts          # Funciones utilitarias generales (incluye formatGuaranies)
-  /actions            # Server Actions — auth.actions.ts, service.actions.ts, team.actions.ts (implementados)
+  /actions            # Server Actions — auth.actions.ts, service.actions.ts, team.actions.ts, cash.actions.ts (implementados)
   /store              # Estado global del frontend (Zustand - ej. timerStore)
   /types              # Definiciones de tipos e interfaces TypeScript
 
@@ -164,12 +214,12 @@ Estructura basada en Next.js App Router, separando claramente la lógica de nego
 #       vitest.setup.ts, postcss.config.mjs, .prettierrc.json, .env.example
 ```
 
-`(auth)`, `(dashboard)/layout.tsx`, `(dashboard)/servicios` y
-`(dashboard)/equipo` ya tienen lógica real — ver "Auth y Multi-Tenant",
-"Catálogo de Servicios" y "Gestión de Equipo" más arriba.
-`(dashboard)/agenda` sigue siendo un placeholder (spec futura). `caja/`,
-`estadisticas/`, `forms/`, `timers/`, `store/` siguen vacíos (`.gitkeep`):
-son el esqueleto para las próximas specs.
+`(auth)`, `(dashboard)/layout.tsx`, `(dashboard)/servicios`,
+`(dashboard)/equipo` y `(dashboard)/caja` ya tienen lógica real — ver "Auth
+y Multi-Tenant", "Catálogo de Servicios", "Gestión de Equipo" y "Sesión de
+Caja Diaria" más arriba. `(dashboard)/agenda` sigue siendo un placeholder
+(spec futura). `estadisticas/`, `forms/`, `timers/`, `store/` siguen vacíos
+(`.gitkeep`): son el esqueleto para las próximas specs.
 
 ## Las 3 Decisiones Técnicas Más Riesgosas y su Alternativa
 

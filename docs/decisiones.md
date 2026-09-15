@@ -272,3 +272,134 @@ Costo: si en el futuro se agrega otro punto de inserción a `users` fuera de
 esta acción, ese código tiene que acordarse de setear `barbershop_id` a
 mano — a diferencia de `services`, acá no hay una red de seguridad a nivel
 de columna.
+
+## 2026-09-15 — `cash_sessions`: nueva función `current_user_id()`, mismo patrón que `current_barbershop_id()`
+Elegido: función `SECURITY DEFINER` `public.current_user_id()` (devuelve el
+`id` de `public.users` del autenticado) para poder default-ear `user_id` en
+el `insert` de `cash_sessions` (igual que `barbershop_id` con
+`current_barbershop_id()`) y para las policies `cash_sessions_insert_own` /
+`cash_sessions_update_own`.
+Descartado: resolver el `user_id` a mano en `openCashSessionAction`
+(consultando `users` por `auth_id`, como ya hace `getCurrentUserId` en el
+mismo archivo para `getCurrentCashSessionAction`) y mandarlo explícito en
+el `insert`, confiando en la policy `WITH CHECK` de RLS para validarlo —
+mismo patrón que `createBarberAction` (ver entrada anterior).
+Por qué: acá sí aplica la razón que en `createBarberAction` no aplicaba:
+`openCashSessionAction` inserta una fila nueva a nombre del propio usuario
+autenticado (no de un perfil ajeno recién creado), exactamente el caso que
+`services.barbershop_id` con columna default ya resuelve — que el valor
+nunca salga del Server Action es una red de seguridad extra a nivel de
+schema, y evita un round-trip a `users` en el insert.
+Costo: ahora hay dos funciones `SECURITY DEFINER` casi idénticas
+(`current_barbershop_id()`, `current_user_id()`); si `appointments` (spec
+futura, también tiene `user_id`) necesita el mismo patrón, va a ser la
+tercera policy que dependa de esto — evaluar en ese momento si conviene
+consolidar.
+
+## 2026-09-15 — `closeCashSessionAction`: `end_time`/`final_balance` calculados en el Server Action, no en un trigger de Postgres
+Elegido: `end_time = new Date().toISOString()` y
+`final_balance = initial_balance` (leído de un `select` previo) se calculan
+en TypeScript, dentro de `closeCashSessionAction`, y se mandan en el
+`update`.
+Descartado: un trigger `BEFORE UPDATE` en `cash_sessions` que asigne
+`end_time = now()` y `final_balance` al detectar la transición
+`open -> closed` (evita por completo que el Server Action toque
+timestamps), o una función RPC `close_cash_session` al estilo
+`register_owner`.
+Por qué: la spec 04 (sección 5) pide no confiar en un timestamp mandado
+"desde el cliente (Next.js)" porque el celular del barbero puede tener mal
+la hora — pero un Server Action corre en el servidor, no en el celular, así
+que su reloj es confiable; el riesgo real es un timestamp generado en un
+Client Component y pasado como argumento, cosa que acá no pasa (`sessionId`
+es el único argumento). Un trigger/RPC habría sido más "a prueba de balas",
+pero `arquitectura.md` ya documentó preferir lógica en Server Actions por
+sobre triggers/RPC en Postgres para un solo dev que debuggea en TypeScript
+(ver "Las 3 Decisiones Técnicas Más Riesgosas..."); usarlo acá sin una
+razón de atomicidad multi-tabla (a diferencia de `register_owner`, que sí
+la tenía) hubiera sido inconsistente con esa decisión.
+Costo: si en el futuro alguien actualiza `cash_sessions.status` a `closed`
+por fuera de `closeCashSessionAction` (un script, otra acción), `end_time`
+no se completa solo — a diferencia de un trigger, acá la garantía vive en
+el código de la acción, no en el schema.
+
+## 2026-09-15 — `OpenCashView`: tamaño de letra del monto según cantidad de dígitos, no `clamp()` con `vw`
+Elegido: el input del saldo inicial calcula su `font-size` en JS a partir de
+`amount.length` (`calcularTamanioFuente` en `OpenCashView.tsx`) — hasta 5
+dígitos usa el tamaño máximo (4.5rem) y de ahí se achica 0.35rem por dígito
+extra, con un piso de 1.75rem. También se reemplazó el símbolo `₲` por el
+texto `"Gs."` (falta el glifo en `Zilla Slab` y renderizaba como una letra
+rota) y se ocultaron las flechas nativas de incremento/decremento del
+`<input type="number">` (`[appearance:textfield]` +
+`[&::-webkit-*-spin-button]:appearance-none`).
+Descartado: la primera versión usaba `font-size: clamp(2rem, 14vw, 4.5rem)`
+(tamaño atado al ancho de la ventana).
+Por qué: pedido explícito del usuario tras probar la pantalla ("no me gusta
+la g", "si pasa de las 5 cifras el monto ya no se puede ver", "no me gusta
+esa cosa de subir y bajar el número"). El `clamp()` con `vw` resultó ser la
+causa real del segundo problema: en una ventana ancha, `14vw` supera el
+máximo de 4.5rem para cualquier cantidad de dígitos, así que un número de 9
+cifras no se achicaba nunca y desbordaba el contenedor — el navegador, para
+mantener visible el cursor (al final del texto), recortaba el *principio*
+del número en vez de mostrarlo completo. Encontrado probando en el
+navegador con la extensión de Chrome, no reportado por el usuario
+directamente. Atar el tamaño a `amount.length` en vez de al viewport
+garantiza que el número siempre entre completo, sin importar el ancho de
+pantalla.
+Costo: los números de más de ~12 dígitos (saldos irreales para una caja
+diaria) terminan en el piso de 1.75rem y podrían apretarse en un celular
+muy angosto; no se validó ese caso extremo porque no es un escenario real
+para un saldo inicial de caja.
+
+## 2026-09-15 — `OpenCashView`: separador de miles en vivo, `input type="text"` en vez de `type="number"`
+Elegido: el estado `amount` guarda solo dígitos (sin puntos); lo que se
+muestra en el input es `Intl.NumberFormat("es-PY").format(...)` sobre esos
+dígitos (`formatearConPuntosDeMiles`), recalculado en cada tecla. El input
+pasa de `type="number"` a `type="text"` con `inputMode="numeric"` (un
+`<input type="number">` no permite mostrar caracteres no numéricos como el
+punto de miles). El tamaño de letra (`calcularTamanioFuente`) ahora se basa
+en la longitud del texto ya formateado (dígitos + puntos), no solo en la
+cantidad de dígitos, porque los puntos también ocupan espacio horizontal.
+Como el cursor puede quedar en cualquier punto del número (no solo al
+final) y la cantidad de puntos cambia con cada tecla, `handleAmountChange`
+recalcula la posición del cursor contando cuántos dígitos había antes de él
+y ubicándolo después de esa misma cantidad de dígitos en el texto
+reformateado — sin esto, el cursor saltaría al final en cada tecla.
+Descartado: dejar el monto sin separadores (como estaba) y sólo resolver
+tamaño/glifo/spinners.
+Por qué: pedido explícito del usuario ("se le puede poner un punto cada vez
+que sea mil"). También preguntó por alternativas para que la letra no se
+achique con números largos; se le respondió que las opciones (scroll
+horizontal dentro del input, contenedor más ancho) no valen la pena porque
+en el celular el achicamiento va a pasar igual — no se implementó nada de
+eso, solo se ajustó el cálculo de tamaño para que cuente los puntos.
+Costo: `handleAmountChange` es bastante más código que un simple
+`setAmount(event.target.value)` por el manejo de cursor; si en el futuro
+hace falta el mismo patrón de "monto con separador de miles" en otra
+pantalla (agenda, productos), conviene extraer esto a un hook/componente
+compartido en vez de copiar la función — no se hizo ahora porque `OpenCashView`
+es el único lugar que lo necesita.
+
+## 2026-09-15 — `cash_sessions`: `SELECT` alcanza a toda la barbería, `INSERT`/`UPDATE` solo al dueño de la fila
+Elegido: la policy `cash_sessions_select_same_barbershop` deja ver
+cualquier caja de la propia barbería (`barbershop_id = current_barbershop_id()`),
+mientras que `cash_sessions_insert_own` / `cash_sessions_update_own` exigen
+además `user_id = current_user_id()`. `getCurrentCashSessionAction` filtra
+igual por `user_id` a nivel de aplicación para mostrar "mi" caja, no la de
+un compañero.
+Descartado: acotar también el `SELECT` a `user_id = current_user_id()`
+(mismo criterio que insert/update), de forma que un barbero no pueda leer
+ninguna fila de `cash_sessions` que no sea la suya.
+Por qué: la spec 04 (sección 5) solo exige que un barbero no pueda *abrir o
+cerrar* la caja de otro — no dice nada sobre lectura. `services` y
+`equipo` (specs 02 y 03) ya establecieron el patrón de que, dentro de una
+misma barbería, los datos operativos son visibles para todo el equipo y el
+control fino de permisos se hace en el `INSERT`/`UPDATE`, pensando en que
+el dueño va a necesitar ver la caja de cada barbero para las estadísticas
+de la spec 08 (`docs/backlog.md`) sin tener que rediseñar RLS en ese
+momento. No se le consultó al usuario porque es consistente con ese patrón
+ya establecido, no una decisión nueva de aislamiento.
+Costo: si más adelante se decide que un barbero *no* debería poder ver el
+saldo inicial de la caja de otro barbero (privacidad entre compañeros,
+no entre tenants), hay que agregar una policy de `SELECT` más estricta y
+ajustar cualquier pantalla que hoy asuma que puede leer `cash_sessions` de
+toda la barbería sin querer decir "todas son mías".
