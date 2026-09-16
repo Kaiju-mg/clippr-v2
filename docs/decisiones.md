@@ -700,3 +700,29 @@ Costo: ninguna migración ni cambio de datos — es puramente visual/
 estructural. Al sacar la barra superior, el nombre de la barbería ya no
 se muestra en ningún lado del dashboard.
 visible en la práctica.
+
+## 2026-09-16 — `appointments`: falta política RLS de `update` (spec 06)
+Elegido: nueva migración `20260916010000_appointments_update_own.sql` con
+`appointments_update_own`, una policy `for update using (barbershop_id =
+current_barbershop_id() and user_id = current_user_id())` — mismo criterio
+estricto que `appointments_select_own` / `appointments_insert_own` (spec
+05) y el mismo patrón (`using` sin `with check`) que
+`cash_sessions_update_own` (spec 04).
+Descartado: nada — no había alternativa real, la policy faltaba directo.
+Por qué: la spec 06 pide que `completeScheduledAppointmentAction` y
+`cancelAppointmentAction` hagan `UPDATE` sobre `appointments` para pasar
+un turno de `scheduled` a `completed`/`cancelled`, pero la migración de la
+spec 05 (`20260916000000_create_appointments_and_transactions.sql`) solo
+creó políticas de `select` e `insert` — no hacía falta `update` porque el
+flujo de walk-ins inserta el `appointment` directo en `completed`, nunca
+lo actualiza. Sin la policy nueva, RLS bloquea cualquier `UPDATE` en
+silencio (0 filas afectadas) y ninguna de las dos actions de la spec 06
+podía funcionar. Se consultó al usuario porque la spec no cerraba sola
+(daba por sentado que las políticas "ya existentes" alcanzaban); confirmó
+agregar la policy con este criterio antes de seguir.
+Costo: igual que el resto de `appointments`/`cash_sessions`, cuando la
+spec 08 de estadísticas le dé al dueño visibilidad del equipo va a hacer
+falta revisar si también necesita poder actualizar turnos ajenos (hoy no
+puede). Migración aplicada contra el proyecto real con `supabase db push`
+(quedó bloqueada por permisos al principio de la sesión; el usuario
+confirmó aplicarla, ver `docs/deuda-tecnica.md`).

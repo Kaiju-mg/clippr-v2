@@ -280,6 +280,62 @@ real, mismo criterio que la dirección visual del 14/09. Ver
   input "Servicio (opcional)" se conserva, más chico, arriba del botón:
   sigue siendo la única forma de distinguir timers concurrentes.
 
+### Agenda de Turnos Programados (implementado)
+
+Sexta rebanada vertical (`docs/specs/06-agenda-de-turnos-programados.md`).
+Migración `20260916010000_appointments_update_own.sql` (política RLS de
+`update` sobre `appointments`, faltante desde la spec 05 — ver
+`docs/decisiones.md` 2026-09-16) aplicada contra el proyecto real
+(`supabase db push`). Probado con Vitest (Supabase mockeado) **y** de
+punta a punta en el navegador contra el proyecto real (2026-09-16), con
+dos bugs abiertos documentados en `docs/deuda-tecnica.md` (día en UTC y
+`end_time` anterior a `start_time`).
+
+- **RLS de `update`, mismo criterio estricto que `select`/`insert`:**
+  `appointments_update_own` exige `barbershop_id = current_barbershop_id()
+  and user_id = current_user_id()`, igual que `appointments_select_own` /
+  `appointments_insert_own` (spec 05) y `cash_sessions_update_own` (spec
+  04). Sin esta policy, `completeScheduledAppointmentAction` y
+  `cancelAppointmentAction` no podían actualizar ninguna fila (RLS
+  bloqueaba el `UPDATE` en silencio) — ver `docs/decisiones.md`.
+- **`src/actions/agenda.actions.ts`:**
+  - `getAgendaAction(dateISO)` filtra `appointments` por el rango
+    `[00:00, 24:00)` UTC del día pedido y por los estados
+    `scheduled`/`completed`/`cancelled` (`walkin` existe en el check
+    constraint pero ningún flujo lo usa todavía). El aislamiento por
+    tenant/usuario lo resuelve RLS, no un `.eq()` a mano.
+  - `scheduleAppointmentAction` exige un `clientName` no vacío (a
+    diferencia del walk-in, donde es opcional) y un servicio activo; deriva
+    `end_time` sumando `duration_minutes` a `start_time` — nunca lo recibe
+    del cliente. No valida que `start_time` sea futuro: la spec permite
+    agendar en el pasado del mismo día (se anota tarde) o en el futuro.
+  - `completeScheduledAppointmentAction` reusa los mismos principios que
+    `completeWalkinAction` (spec 05): caja verificada y propia, precio
+    leído de `services.price` en el servidor, `end_time` pisado con el
+    reloj del servidor. El `update` filtra además por
+    `status = "scheduled"`, así que un doble tap con red lenta no completa
+    (ni cobra) el mismo turno dos veces — mismo criterio que
+    `closeCashSessionAction`. Sin RPC atómico: mismo desfase potencial
+    `appointment`/`transaction` que `completeWalkinAction`, ver
+    `docs/deuda-tecnica.md`.
+  - `cancelAppointmentAction` hace lo mismo con un `update` acotado a
+    `status = "scheduled"`: "no existe", "es de otro barbero" (RLS) y "ya
+    se había resuelto" devuelven el mismo mensaje genérico.
+- **UI (`(dashboard)/agenda/`):** `page.tsx` (Server Component) reemplaza
+  el placeholder de la spec 05.5/registro por la lógica real. La fecha
+  vive en la URL (`?date=YYYY-MM-DD`, default: hoy en UTC) en vez de en
+  estado de cliente, así que cada cambio de día es un fetch real al
+  servidor — mismo criterio que el resto de la app (nada de estado
+  "optimista" para datos que dependen del servidor).
+  `_components/AgendaView.tsx` maneja la navegación día a día
+  (`router.push` con el query param) y el toggle de
+  `_components/ScheduleInlineForm.tsx` (in-line, sin modal — mismo patrón
+  que servicios/equipo/caja/walk-ins). `_components/AppointmentRow.tsx`
+  usa `useOptimistic` por fila para marcar completado/cancelado al toque;
+  `router.refresh()` al resolver la promesa reconcilia con el estado real
+  del servidor. Sin caja abierta, el botón "Cobrar" se deshabilita y
+  aparece el mismo aviso con link a `/caja` que en `FinishWalkinForm`.
+
 ## Modelo de Datos
 
 Entidades principales enfocadas en resolver el modelo Multi-Tenant, los turnos y la gestión individual de caja:

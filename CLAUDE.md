@@ -147,5 +147,25 @@ inconsistencias chicas en `/equipo` (casing de botón, "Correo" vs
 ver `docs/deuda-tecnica.md`. Ver `docs/arquitectura.md` sección "Sistema
 de Diseño" y `docs/decisiones.md`.
 
-El resto (agenda de turnos programados, productos, estadísticas) sigue
-siendo esqueleto sin lógica.
+Spec 06 (agenda de turnos programados, `/agenda`) implementada y probada
+con Vitest (mocks de Supabase): agendar un turno (in-line, sin modal),
+completarlo/cobrarlo (mismos principios que el walk-in de la spec 05:
+precio y `end_time` del servidor, bloqueo sin caja abierta) y cancelarlo,
+con `useOptimistic` por fila y navegación de fecha vía `?date=` en la URL.
+La spec no cerraba sola: faltaba la política RLS de `update` sobre
+`appointments` (la spec 05 solo había creado `select`/`insert`, porque el
+walk-in nunca actualiza un turno ya insertado) — se agregó
+`appointments_update_own` (migración
+`20260916010000_appointments_update_own.sql`) con el mismo criterio
+estricto que el resto de `appointments`. Migración aplicada contra el
+proyecto real (`supabase db push`, confirmado por el usuario tras
+consultarle porque la spec no cerraba sola). Probado además de punta a
+punta en el navegador contra el proyecto real (agendar, bloqueo de cobro
+sin caja, navegar días, cancelar, cobrar y verificar la `transaction` en
+la base). Esa prueba confirmó dos bugs abiertos: turnos después de las
+21:00 locales aparecen en el día siguiente (UTC) y `end_time` puede
+quedar antes que `start_time` — ver "Media Prioridad" en
+`docs/deuda-tecnica.md`. Ver `docs/arquitectura.md`
+sección "Agenda de Turnos Programados" y `docs/decisiones.md`.
+
+El resto (productos, estadísticas) sigue siendo esqueleto sin lógica.
