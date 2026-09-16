@@ -11,6 +11,7 @@ vi.mock("next/cache", () => ({
 }));
 
 import {
+  getCashBalanceAction,
   getCurrentCashSessionAction,
   openCashSessionAction,
   closeCashSessionAction,
@@ -60,15 +61,23 @@ const PROFILE = { id: "user-1" };
  * y from("users") resolviendo siempre al perfil de arriba. from("cash_sessions")
  * (u otra tabla) usa el builder que se le pase para cada test.
  */
-function mockSupabase(cashSessionsBuilder: QueryBuilderMock<unknown>) {
+function mockSupabase(
+  cashSessionsBuilder: QueryBuilderMock<unknown>,
+  transactionsBuilder: QueryBuilderMock<unknown> = createBuilder<unknown>({
+    data: [],
+    error: null,
+  }),
+) {
   const usersBuilder = createBuilder<typeof PROFILE>({
     data: PROFILE,
     error: null,
   });
 
-  const from = vi.fn((table: string) =>
-    table === "users" ? usersBuilder : cashSessionsBuilder,
-  );
+  const from = vi.fn((table: string) => {
+    if (table === "users") return usersBuilder;
+    if (table === "transactions") return transactionsBuilder;
+    return cashSessionsBuilder;
+  });
 
   vi.mocked(createClient).mockResolvedValue({
     from,
@@ -216,13 +225,79 @@ describe("openCashSessionAction — happy path y errores", () => {
   });
 });
 
+const TRANSACCIONES = [
+  { type: "income", amount: 30000 },
+  { type: "income", amount: 25000 },
+  { type: "expense", amount: 5000 },
+];
+
+describe("getCashBalanceAction", () => {
+  it("suma ingresos y resta egresos al saldo inicial", async () => {
+    const builder = createBuilder<unknown>({
+      data: { initial_balance: 50000 },
+      error: null,
+    });
+    const transactionsBuilder = createBuilder<unknown>({
+      data: TRANSACCIONES,
+      error: null,
+    });
+    mockSupabase(builder, transactionsBuilder);
+
+    const result = await getCashBalanceAction("cs1");
+
+    expect(transactionsBuilder.eq).toHaveBeenCalledWith("cash_session_id", "cs1");
+    expect(result).toEqual({
+      success: true,
+      data: { income: 55000, expense: 5000, current: 100000 },
+    });
+  });
+
+  it("sin transacciones, el saldo actual es el inicial", async () => {
+    mockSupabase(
+      createBuilder<unknown>({ data: { initial_balance: 50000 }, error: null }),
+    );
+
+    const result = await getCashBalanceAction("cs1");
+
+    expect(result).toEqual({
+      success: true,
+      data: { income: 0, expense: 0, current: 50000 },
+    });
+  });
+
+  it("devuelve 'no encontrada' si la caja no es propia (RLS)", async () => {
+    mockSupabase(createBuilder<unknown>({ data: null, error: null }));
+
+    const result = await getCashBalanceAction("cs-ajena");
+
+    expect(result).toEqual({
+      success: false,
+      error: "Caja no encontrada o ya cerrada.",
+    });
+  });
+
+  it("devuelve un error genérico si fallan las transacciones", async () => {
+    mockSupabase(
+      createBuilder<unknown>({ data: { initial_balance: 50000 }, error: null }),
+      createBuilder<unknown>({ data: null, error: { message: "boom" } }),
+    );
+
+    const result = await getCashBalanceAction("cs1");
+
+    expect(result).toEqual({
+      success: false,
+      error: "Algo salió mal. Intentá de nuevo.",
+    });
+  });
+});
+
 describe("closeCashSessionAction", () => {
-  it("cierra la caja igualando final_balance a initial_balance", async () => {
+  it("cierra la caja con final_balance = inicial + ingresos − egresos", async () => {
     const closed = {
       ...CASH_SESSION,
       status: "closed" as const,
       end_time: "2026-09-15T18:00:00.000Z",
-      final_balance: CASH_SESSION.initial_balance,
+      final_balance: 100000,
     };
 
     // El action hace dos llamadas a .from("cash_sessions"): un fetch
@@ -237,18 +312,40 @@ describe("closeCashSessionAction", () => {
         error: null,
       })
       .mockResolvedValueOnce({ data: closed, error: null });
-    mockSupabase(builder as QueryBuilderMock<unknown>);
+    mockSupabase(
+      builder as QueryBuilderMock<unknown>,
+      createBuilder<unknown>({ data: TRANSACCIONES, error: null }),
+    );
 
     const result = await closeCashSessionAction("cs1");
 
     expect(builder.update).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "closed",
-        final_balance: closed.initial_balance,
+        final_balance: 100000,
       }),
     );
     expect(builder.eq).toHaveBeenCalledWith("id", "cs1");
     expect(result).toEqual({ success: true, data: closed });
+  });
+
+  it("no cierra la caja si no puede leer las transacciones", async () => {
+    const builder = createBuilder<unknown>({
+      data: { initial_balance: 50000, status: "open" },
+      error: null,
+    });
+    mockSupabase(
+      builder,
+      createBuilder<unknown>({ data: null, error: { message: "boom" } }),
+    );
+
+    const result = await closeCashSessionAction("cs1");
+
+    expect(result).toEqual({
+      success: false,
+      error: "Algo salió mal. Intentá de nuevo.",
+    });
+    expect(builder.update).not.toHaveBeenCalled();
   });
 
   it("devuelve 'no encontrada' si la sesión ya está cerrada", async () => {

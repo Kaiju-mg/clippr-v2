@@ -8,6 +8,7 @@ import {
   completeScheduledAppointmentAction,
   cancelAppointmentAction,
 } from "@/actions/agenda.actions";
+import { BUSINESS_TIMEZONE } from "@/lib/dates";
 import { formatGuaranies } from "@/lib/utils";
 import type { Appointment, AppointmentStatus } from "@/types";
 
@@ -28,6 +29,7 @@ function formatTime(iso: string): string {
   return new Intl.DateTimeFormat("es-PY", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: BUSINESS_TIMEZONE,
   }).format(new Date(iso));
 }
 

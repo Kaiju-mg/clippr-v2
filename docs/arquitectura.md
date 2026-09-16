@@ -137,14 +137,13 @@ la UI.
   `SELECT` directo a la API). Ver `decisiones.md` 2026-09-15 — el `SELECT`
   arrancó abierto a toda la barbería y se corrigió en la misma sesión.
 - **`end_time` y `final_balance`:** calculados en `closeCashSessionAction`
-  (servidor), nunca mandados desde un Client Component. `final_balance`
-  todavía iguala a `initial_balance` — esto era correcto cuando se escribió
-  (spec 04, antes de que existieran cobros), pero **desde la spec 05 ya no
-  lo es**: `completeWalkinAction` genera filas en `transactions` que
-  `closeCashSessionAction` no suma todavía. Es un gap funcional real, no
-  una spec futura — ver `docs/deuda-tecnica.md` ("Alta Prioridad"). Ver
-  también `decisiones.md` 2026-09-15 sobre por qué el cálculo vive en el
-  Server Action y no en un trigger de Postgres.
+  (servidor), nunca mandados desde un Client Component. Desde el
+  2026-09-16, `final_balance` = saldo inicial + ingresos − egresos de
+  `transactions`, con la misma función (`computeBalance`) que usa
+  `getCashBalanceAction` para mostrar el "Saldo actual" en `/caja`. Si no
+  se pueden leer las transacciones, la caja no se cierra. Ver
+  `decisiones.md` 2026-09-15 (por qué el cálculo vive en el Server Action y
+  no en un trigger) y 2026-09-16 (saldo compartido pantalla/cierre).
 - **UI:** `(dashboard)/caja/page.tsx` (Server Component) decide entre
   `_components/OpenCashView.tsx` (si no hay caja abierta) y el dashboard de
   caja abierta con `_components/CloseCashButton.tsx` (confirmación in-line
@@ -287,9 +286,9 @@ Migración `20260916010000_appointments_update_own.sql` (política RLS de
 `update` sobre `appointments`, faltante desde la spec 05 — ver
 `docs/decisiones.md` 2026-09-16) aplicada contra el proyecto real
 (`supabase db push`). Probado con Vitest (Supabase mockeado) **y** de
-punta a punta en el navegador contra el proyecto real (2026-09-16), con
-dos bugs abiertos documentados en `docs/deuda-tecnica.md` (día en UTC y
-`end_time` anterior a `start_time`).
+punta a punta en el navegador contra el proyecto real (2026-09-16). Esa
+prueba encontró dos bugs (día cortado en UTC y `end_time` anterior a
+`start_time`), corregidos en el sprint de estabilización del mismo día.
 
 - **RLS de `update`, mismo criterio estricto que `select`/`insert`:**
   `appointments_update_own` exige `barbershop_id = current_barbershop_id()
@@ -299,12 +298,16 @@ dos bugs abiertos documentados en `docs/deuda-tecnica.md` (día en UTC y
   `cancelAppointmentAction` no podían actualizar ninguna fila (RLS
   bloqueaba el `UPDATE` en silencio) — ver `docs/decisiones.md`.
 - **`src/actions/agenda.actions.ts`:**
+  - **Fechas en `America/Asuncion` (`src/lib/dates.ts`):** "hoy", los
+    cortes de día y el instante de un turno se calculan con la zona del
+    negocio, nunca con `new Date()` pelado (el servidor corre en UTC).
   - `getAgendaAction(dateISO)` filtra `appointments` por el rango
-    `[00:00, 24:00)` UTC del día pedido y por los estados
+    `[00:00, 00:00 del día siguiente)` en hora de Paraguay y por los estados
     `scheduled`/`completed`/`cancelled` (`walkin` existe en el check
     constraint pero ningún flujo lo usa todavía). El aislamiento por
     tenant/usuario lo resuelve RLS, no un `.eq()` a mano.
-  - `scheduleAppointmentAction` exige un `clientName` no vacío (a
+  - `scheduleAppointmentAction` recibe `dateISO` + `time` (HH:MM) y arma
+    el instante en el servidor. Exige un `clientName` no vacío (a
     diferencia del walk-in, donde es opcional) y un servicio activo; deriva
     `end_time` sumando `duration_minutes` a `start_time` — nunca lo recibe
     del cliente. No valida que `start_time` sea futuro: la spec permite
@@ -315,7 +318,9 @@ dos bugs abiertos documentados en `docs/deuda-tecnica.md` (día en UTC y
     reloj del servidor. El `update` filtra además por
     `status = "scheduled"`, así que un doble tap con red lenta no completa
     (ni cobra) el mismo turno dos veces — mismo criterio que
-    `closeCashSessionAction`. Sin RPC atómico: mismo desfase potencial
+    `closeCashSessionAction`. Si se cobra antes de hora, `start_time` se
+    corre a `ahora − duración` (la duración nunca queda negativa), y los
+    turnos de días futuros no se pueden cobrar. Sin RPC atómico: mismo desfase potencial
     `appointment`/`transaction` que `completeWalkinAction`, ver
     `docs/deuda-tecnica.md`.
   - `cancelAppointmentAction` hace lo mismo con un `update` acotado a
@@ -323,7 +328,7 @@ dos bugs abiertos documentados en `docs/deuda-tecnica.md` (día en UTC y
     se había resuelto" devuelven el mismo mensaje genérico.
 - **UI (`(dashboard)/agenda/`):** `page.tsx` (Server Component) reemplaza
   el placeholder de la spec 05.5/registro por la lógica real. La fecha
-  vive en la URL (`?date=YYYY-MM-DD`, default: hoy en UTC) en vez de en
+  vive en la URL (`?date=YYYY-MM-DD`, default: hoy en Paraguay) en vez de en
   estado de cliente, así que cada cambio de día es un fetch real al
   servidor — mismo criterio que el resto de la app (nada de estado
   "optimista" para datos que dependen del servidor).
@@ -353,11 +358,17 @@ Entidades principales enfocadas en resolver el modelo Multi-Tenant, los turnos y
 - **Appointment (Turno / Corte):**
   - `id`, `barbershop_id`, `user_id` (barbero asignado), `client_name`
     (nullable — ej. "Cliente de paso"), `service_id`, `start_time`,
-    `end_time`, `status` (scheduled, walkin, completed, cancelled — en la
-    práctica hoy solo se inserta con `completed`, ver "Flujo de Walk-ins")
+    `end_time`, `status` (scheduled, walkin, completed, cancelled — los
+    walk-ins se insertan directo como `completed`; los turnos de la agenda
+    nacen `scheduled` y pasan a `completed` o `cancelled`. `walkin` no se usa
+    todavía)
+  - `client_name` es obligatorio al agendar (spec 06), opcional en walk-ins.
+  - Al completar un turno agendado antes de hora, `start_time` se corre a
+    `end_time − duración` para que la duración nunca sea negativa.
 - **CashSession (Sesión de Caja Diaria por Barbero):**
   - `id`, `barbershop_id`, `user_id`, `start_time`, `end_time`, `initial_balance`, `final_balance`, `status` (open, closed)
   - `end_time` y `final_balance` son `null` mientras `status` = `open`.
+    Al cerrar, `final_balance` = `initial_balance` + ingresos − egresos.
   - Índice único parcial `one_open_session_per_user` (`user_id` WHERE
     `status = 'open'`): un usuario no puede tener más de una caja abierta.
 - **Transaction (Movimiento de Caja):**
@@ -384,7 +395,7 @@ Estructura basada en Next.js App Router, separando claramente la lógica de nego
       /__tests__      # auth.test.tsx (Vitest + Testing Library)
     /(dashboard)      # Layout (guard de sesión + BottomNav, implementado)
       /inicio         # Timers + walk-ins, pantalla principal del barbero (implementado, spec 05)
-      /agenda         # Placeholder — turnos programados (spec 06, futura)
+      /agenda         # Turnos programados: page.tsx + _components/ (implementado, spec 06)
       /servicios      # Catálogo de servicios (implementado, spec 02)
       /equipo         # Gestión de equipo/barberos (implementado, spec 03)
       /caja           # Apertura/cierre de CashSessions (implementado, spec 04)
@@ -397,7 +408,8 @@ Estructura basada en Next.js App Router, separando claramente la lógica de nego
   /lib
     /supabase         # Clientes de Supabase: client.ts (browser), server.ts (servidor), admin.ts (Service Role Key, solo servidor)
     utils.ts          # Funciones utilitarias generales (incluye formatGuaranies)
-  /actions            # Server Actions — auth.actions.ts, service.actions.ts, team.actions.ts, cash.actions.ts, walkin.actions.ts (implementados)
+    dates.ts          # Fechas del negocio en America/Asuncion (+ dates.test.ts)
+  /actions            # Server Actions — auth, service, team, cash, walkin, agenda (.actions.ts, implementados)
   /store              # Estado global del frontend (Zustand) — timerStore.ts (implementado, spec 05)
   /types              # Definiciones de tipos e interfaces TypeScript
 
@@ -406,14 +418,13 @@ Estructura basada en Next.js App Router, separando claramente la lógica de nego
 ```
 
 `(auth)`, `(dashboard)/layout.tsx`, `(dashboard)/inicio`,
-`(dashboard)/servicios`, `(dashboard)/equipo`, `(dashboard)/caja` y
-`(dashboard)/mas` ya tienen lógica real — ver "Auth y Multi-Tenant",
-"Flujo de Walk-ins y Temporizador", "Navegación Minimalista", "Sistema de
-Diseño", "Catálogo de Servicios", "Gestión de Equipo" y "Sesión de Caja
-Diaria" más arriba.
-`(dashboard)/agenda` sigue siendo un placeholder (spec 06, futura, aunque
-ya forma parte de la barra de navegación). `estadisticas/` y `forms/`
-siguen vacíos (`.gitkeep`): son el esqueleto para las próximas specs.
+`(dashboard)/agenda`, `(dashboard)/servicios`, `(dashboard)/equipo`,
+`(dashboard)/caja` y `(dashboard)/mas` ya tienen lógica real — ver "Auth y
+Multi-Tenant", "Flujo de Walk-ins y Temporizador", "Agenda de Turnos
+Programados", "Navegación Minimalista", "Sistema de Diseño", "Catálogo de
+Servicios", "Gestión de Equipo" y "Sesión de Caja Diaria" más arriba.
+`estadisticas/` y `forms/` siguen vacíos (`.gitkeep`): son el esqueleto
+para las próximas specs.
 
 ## Las 3 Decisiones Técnicas Más Riesgosas y su Alternativa
 

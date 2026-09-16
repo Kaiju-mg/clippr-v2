@@ -16,9 +16,9 @@ interface ScheduleInlineFormProps {
 
 /**
  * Formulario in-line (sin modales, decisión del 2026-09-14) para agendar
- * un turno. `dateISO` es el día que se está mirando en la agenda (no
- * necesariamente hoy): se combina acá con la hora elegida para armar el
- * instante planificado, en la zona horaria del dispositivo del barbero.
+ * un turno. Manda el día que se está mirando y la hora elegida por separado:
+ * el servidor arma el instante con la zona horaria de la barbería, no con la
+ * del celular.
  */
 export function ScheduleInlineForm({
   services,
@@ -45,18 +45,13 @@ export function ScheduleInlineForm({
       return;
     }
 
-    const startTime = new Date(`${dateISO}T${time}:00`);
-    if (Number.isNaN(startTime.getTime())) {
-      setError("El horario de inicio del turno no es válido.");
-      return;
-    }
-
     setIsLoading(true);
 
     const result = await scheduleAppointmentAction({
       clientName,
       serviceId,
-      startTimeISO: startTime.toISOString(),
+      dateISO,
+      time,
     });
 
     setIsLoading(false);

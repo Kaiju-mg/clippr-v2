@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ScheduleInlineForm } from "./ScheduleInlineForm";
 import { AppointmentRow } from "./AppointmentRow";
+import { shiftDateISO } from "@/lib/dates";
 import type { Appointment, Service } from "@/types";
 
 interface AgendaViewProps {
@@ -15,12 +16,8 @@ interface AgendaViewProps {
   services: Service[];
 }
 
-function shiftDate(dateISO: string, deltaDays: number): string {
-  const date = new Date(`${dateISO}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() + deltaDays);
-  return date.toISOString().slice(0, 10);
-}
-
+// `dateISO` es un día calendario, no un instante: se formatea en UTC a
+// propósito para que ninguna zona horaria lo corra de día.
 function formatDateLabel(dateISO: string): string {
   const date = new Date(`${dateISO}T00:00:00.000Z`);
   const label = new Intl.DateTimeFormat("es-PY", {
@@ -78,7 +75,7 @@ export function AgendaView({
       <div className="flex items-center justify-between gap-2">
         <button
           type="button"
-          onClick={() => goToDate(shiftDate(dateISO, -1))}
+          onClick={() => goToDate(shiftDateISO(dateISO, -1))}
           disabled={isPending}
           aria-label="Día anterior"
           className="grid h-8 w-8 place-items-center rounded-md border border-line text-muted disabled:opacity-50"
@@ -88,7 +85,7 @@ export function AgendaView({
         <span className="text-sm font-medium">{formatDateLabel(dateISO)}</span>
         <button
           type="button"
-          onClick={() => goToDate(shiftDate(dateISO, 1))}
+          onClick={() => goToDate(shiftDateISO(dateISO, 1))}
           disabled={isPending}
           aria-label="Día siguiente"
           className="grid h-8 w-8 place-items-center rounded-md border border-line text-muted disabled:opacity-50"

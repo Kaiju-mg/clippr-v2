@@ -49,6 +49,87 @@ async function getCurrentUserId(
   return data?.id ?? null;
 }
 
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+export interface CashBalance {
+  income: number;
+  expense: number;
+  current: number;
+}
+
+/**
+ * Saldo de una caja = inicial + ingresos − egresos, calculado siempre en el
+ * servidor (regla 1 de CLAUDE.md). Lo usan tanto la pantalla de caja como el
+ * cierre, así lo que el barbero ve y lo que queda guardado nunca difieren.
+ * RLS (`transactions_select_own`) ya limita a las transacciones de cajas
+ * propias. Devuelve null si falla la consulta.
+ */
+async function computeBalance(
+  supabase: SupabaseServerClient,
+  sessionId: string,
+  initialBalance: number,
+): Promise<CashBalance | null> {
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("type, amount")
+    .eq("cash_session_id", sessionId);
+
+  if (error) {
+    console.error("computeBalance:", error.message);
+    return null;
+  }
+
+  let income = 0;
+  let expense = 0;
+  for (const row of (data ?? []) as { type: string; amount: number }[]) {
+    if (row.type === "income") income += Number(row.amount);
+    else if (row.type === "expense") expense += Number(row.amount);
+  }
+
+  return {
+    income,
+    expense,
+    current: Number(initialBalance) + income - expense,
+  };
+}
+
+/**
+ * Saldo actual de una caja propia. Si el id no es una caja del usuario
+ * (RLS), se trata como no encontrada.
+ */
+export async function getCashBalanceAction(
+  sessionId: string,
+): Promise<CashActionResult<CashBalance>> {
+  const supabase = await createClient();
+
+  const { data: session, error } = await supabase
+    .from("cash_sessions")
+    .select("initial_balance")
+    .eq("id", sessionId)
+    .maybeSingle<Pick<CashSession, "initial_balance">>();
+
+  if (error) {
+    console.error("getCashBalanceAction:", error.message);
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
+  if (!session) {
+    return { success: false, error: MENSAJE_NO_ENCONTRADA };
+  }
+
+  const balance = await computeBalance(
+    supabase,
+    sessionId,
+    session.initial_balance,
+  );
+
+  if (!balance) {
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
+  return { success: true, data: balance };
+}
+
 /**
  * Devuelve la caja abierta del usuario autenticado, o null si no tiene
  * ninguna. No filtra por barbershop_id a mano: RLS
@@ -120,8 +201,10 @@ export async function openCashSessionAction(
 }
 
 /**
- * Cierra una caja. Por ahora `final_balance` iguala a `initial_balance`
- * (todavía no hay turnos/cobros que sumar — spec futura). `end_time` se
+ * Cierra una caja guardando como `final_balance` el saldo real (inicial +
+ * ingresos − egresos, ver `computeBalance`). Si no se pueden leer las
+ * transacciones, no se cierra: mejor un error que un cierre con un saldo
+ * equivocado. `end_time` se
  * calcula acá, en el servidor: nunca hay que confiar en un timestamp
  * mandado desde un componente cliente, porque el celular del barbero puede
  * tener la hora mal configurada.
@@ -152,12 +235,22 @@ export async function closeCashSessionAction(
     return { success: false, error: MENSAJE_NO_ENCONTRADA };
   }
 
+  const balance = await computeBalance(
+    supabase,
+    sessionId,
+    session.initial_balance,
+  );
+
+  if (!balance) {
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
   const { data: updated, error } = await supabase
     .from("cash_sessions")
     .update({
       status: "closed",
       end_time: new Date().toISOString(),
-      final_balance: session.initial_balance,
+      final_balance: balance.current,
     })
     .eq("id", sessionId)
     .eq("status", "open")

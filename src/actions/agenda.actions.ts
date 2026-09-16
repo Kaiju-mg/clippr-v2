@@ -2,6 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import {
+  businessDateOf,
+  businessDateTimeToUtc,
+  businessDayRangeUtc,
+  businessToday,
+  isValidDateISO,
+  isValidTime,
+} from "@/lib/dates";
 import type { Appointment, AppointmentStatus } from "@/types";
 
 export type AgendaActionResult<T> =
@@ -11,7 +19,10 @@ export type AgendaActionResult<T> =
 export interface SchedulePayload {
   clientName: string;
   serviceId: string;
-  startTimeISO: string;
+  /** Día calendario (YYYY-MM-DD) en la zona horaria de la barbería. */
+  dateISO: string;
+  /** Hora de pared (HH:MM) en la zona horaria de la barbería. */
+  time: string;
 }
 
 const MENSAJE_ERROR_GENERICO = "Algo salió mal. Intentá de nuevo.";
@@ -22,6 +33,8 @@ const MENSAJE_FECHA_INVALIDA = "La fecha no es válida.";
 const MENSAJE_CLIENTE_INVALIDO = "El nombre del cliente es obligatorio.";
 const MENSAJE_INICIO_INVALIDO = "El horario de inicio del turno no es válido.";
 const MENSAJE_TURNO_INVALIDO = "Turno no encontrado o ya fue actualizado.";
+const MENSAJE_TURNO_FUTURO =
+  "No podés cobrar un turno de un día futuro.";
 const MENSAJE_TRANSACCION_FALLIDA =
   "El corte se guardó, pero no se pudo reflejar en la caja. Avisá para revisar el desfase.";
 
@@ -34,38 +47,19 @@ const ESTADOS_AGENDA: AppointmentStatus[] = [
   "cancelled",
 ];
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
 /**
- * Límites [start, end) del día pedido, en UTC. El servidor (y el default
- * de "hoy" en `page.tsx`) también calculan la fecha en UTC, así que ambos
- * lados usan el mismo criterio — igual que el resto del código, que no
- * hace manejo explícito de zona horaria (ver docs/deuda-tecnica.md).
- */
-function getDayRange(dateISO: string): { start: string; end: string } | null {
-  if (!DATE_RE.test(dateISO)) return null;
-
-  const start = new Date(`${dateISO}T00:00:00.000Z`);
-  if (Number.isNaN(start.getTime())) return null;
-
-  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-  return { start: start.toISOString(), end: end.toISOString() };
-}
-
-/**
- * Turnos del barbero actual para el día pedido, ordenados por hora de
- * inicio. RLS (`appointments_select_own`) ya acota a los propios y al
- * tenant — acá solo se filtra por fecha y por los estados que le
- * interesan a la agenda.
+ * Turnos del barbero actual para el día pedido (día de Paraguay, no de UTC),
+ * ordenados por hora de inicio. RLS (`appointments_select_own`) ya acota a
+ * los propios y al tenant — acá solo se filtra por fecha y estado.
  */
 export async function getAgendaAction(
   dateISO: string,
 ): Promise<AgendaActionResult<Appointment[]>> {
-  const range = getDayRange(dateISO);
-  if (!range) {
+  if (!isValidDateISO(dateISO)) {
     return { success: false, error: MENSAJE_FECHA_INVALIDA };
   }
 
+  const range = businessDayRangeUtc(dateISO);
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -89,7 +83,7 @@ function validateSchedulePayload(payload: SchedulePayload): string | null {
     return MENSAJE_CLIENTE_INVALIDO;
   }
 
-  if (Number.isNaN(new Date(payload.startTimeISO).getTime())) {
+  if (!isValidDateISO(payload.dateISO) || !isValidTime(payload.time)) {
     return MENSAJE_INICIO_INVALIDO;
   }
 
@@ -97,10 +91,10 @@ function validateSchedulePayload(payload: SchedulePayload): string | null {
 }
 
 /**
- * Agenda un turno futuro (o del pasado del mismo día — sección 6 de la
- * spec permite anotarlo tarde: no hay validación de que `startTimeISO`
- * sea posterior a ahora, a propósito). `end_time` se deriva de la
- * duración del servicio, nunca de un dato mandado por el cliente.
+ * Agenda un turno. El instante se arma acá con la zona horaria de la
+ * barbería (`@/lib/dates`), no en el celular: así un turno de las 21:30 cae
+ * en el día correcto aunque el dispositivo tenga otra zona configurada. No
+ * valida que sea futuro: la spec permite anotar tarde un turno de hoy.
  */
 export async function scheduleAppointmentAction(
   payload: SchedulePayload,
@@ -134,7 +128,7 @@ export async function scheduleAppointmentAction(
     return { success: false, error: MENSAJE_SERVICIO_INVALIDO };
   }
 
-  const startTime = new Date(payload.startTimeISO);
+  const startTime = businessDateTimeToUtc(payload.dateISO, payload.time);
   const endTime = new Date(
     startTime.getTime() + service.duration_minutes * 60_000,
   );
@@ -166,14 +160,17 @@ export async function scheduleAppointmentAction(
 /**
  * Completa y cobra un turno agendado: mismos principios que
  * completeWalkinAction (spec 05) — el precio se lee de `services.price`
- * en el servidor (nunca del cliente), la caja se valida antes de cobrar y
- * `end_time` se pisa con el reloj del servidor. El `eq("status",
- * "scheduled")` del update es la barrera contra completarlo dos veces
- * (doble tap con red lenta), mismo criterio que closeCashSessionAction.
+ * en el servidor, la caja se valida antes de cobrar y `end_time` se pisa
+ * con el reloj del servidor. El `eq("status", "scheduled")` del update es
+ * la barrera contra completarlo dos veces (doble tap con red lenta).
  *
- * *(Misma deuda transaccional que completeWalkinAction, spec 05)*: sin
- * RPC atómico, el insert de `transactions` es un paso separado del
- * update de `appointments`.
+ * Si se cobra antes de la hora agendada, `start_time` se corre a
+ * `ahora - duración` para que el turno nunca quede con `end_time` anterior
+ * a `start_time` (rompería las duraciones de la spec 08). Los turnos de días
+ * futuros no se pueden cobrar. Ver docs/decisiones.md 2026-09-16.
+ *
+ * *(Misma deuda transaccional que completeWalkinAction)*: el insert de
+ * `transactions` es un paso separado del update de `appointments`.
  */
 export async function completeScheduledAppointmentAction(
   appointmentId: string,
@@ -201,9 +198,14 @@ export async function completeScheduledAppointmentAction(
 
   const { data: appointment, error: appointmentError } = await supabase
     .from("appointments")
-    .select("id, service_id, status")
+    .select("id, service_id, status, start_time")
     .eq("id", appointmentId)
-    .maybeSingle<{ id: string; service_id: string; status: string }>();
+    .maybeSingle<{
+      id: string;
+      service_id: string;
+      status: string;
+      start_time: string;
+    }>();
 
   if (appointmentError) {
     console.error(
@@ -217,11 +219,23 @@ export async function completeScheduledAppointmentAction(
     return { success: false, error: MENSAJE_TURNO_INVALIDO };
   }
 
+  const now = new Date();
+  const plannedStart = new Date(appointment.start_time);
+
+  if (businessDateOf(plannedStart) > businessToday(now)) {
+    return { success: false, error: MENSAJE_TURNO_FUTURO };
+  }
+
   const { data: service, error: serviceError } = await supabase
     .from("services")
-    .select("id, name, price")
+    .select("id, name, price, duration_minutes")
     .eq("id", appointment.service_id)
-    .maybeSingle<{ id: string; name: string; price: number }>();
+    .maybeSingle<{
+      id: string;
+      name: string;
+      price: number;
+      duration_minutes: number;
+    }>();
 
   if (serviceError || !service) {
     console.error(
@@ -231,9 +245,18 @@ export async function completeScheduledAppointmentAction(
     return { success: false, error: MENSAJE_ERROR_GENERICO };
   }
 
+  const cambios: { status: "completed"; end_time: string; start_time?: string } =
+    { status: "completed", end_time: now.toISOString() };
+
+  if (now.getTime() < plannedStart.getTime()) {
+    cambios.start_time = new Date(
+      now.getTime() - service.duration_minutes * 60_000,
+    ).toISOString();
+  }
+
   const { data: updated, error: updateError } = await supabase
     .from("appointments")
-    .update({ status: "completed", end_time: new Date().toISOString() })
+    .update(cambios)
     .eq("id", appointmentId)
     .eq("status", "scheduled")
     .select()
@@ -276,9 +299,7 @@ export async function completeScheduledAppointmentAction(
 /**
  * Cancela un turno agendado (no asistió). El `eq("status", "scheduled")`
  * del update cubre en un solo paso "no existe", "es de otro barbero" (RLS)
- * y "ya se había completado/cancelado": los tres casos devuelven el mismo
- * mensaje, mismo criterio que closeCashSessionAction con cajas ya
- * cerradas.
+ * y "ya se había completado/cancelado": los tres devuelven el mismo mensaje.
  */
 export async function cancelAppointmentAction(
   appointmentId: string,

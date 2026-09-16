@@ -51,12 +51,13 @@ Correr `npm run lint && npm run typecheck && npm test` antes de dar una tarea po
 src/app/                 rutas (App Router)
   api/health/route.ts    health check (no toca DB ni auth)
   (auth)/                login/registro
-  (dashboard)/           layout (navbar + BottomNav) + inicio, caja,
-                          servicios, equipo, mas, agenda (placeholder),
+  (dashboard)/           layout (guard de sesión + BottomNav) + inicio, caja,
+                          agenda, servicios, equipo, mas,
                           estadisticas (vacío)
 src/components/          ui/ (incluye BottomNav) · forms/ · timers/
 src/lib/supabase/        client.ts (browser)  ·  server.ts (Server Components/Actions/Route Handlers)
-src/lib/utils.ts
+src/lib/utils.ts         formatGuaranies, cn
+src/lib/dates.ts         fechas del negocio en America/Asuncion — usar siempre esto, nunca new Date() pelado para "qué día es"
 src/actions/             Server Actions — toda mutación sensible va acá
 src/store/               Zustand (timerStore)
 src/types/index.ts       tipos del modelo de datos
@@ -102,10 +103,9 @@ probada con Vitest (mocks de Supabase) y de punta a punta en el navegador
 contra el proyecto real, incluyendo bloqueo de doble caja y aislamiento
 entre barberos y entre barberías. Migración
 (`20260915000000_create_cash_sessions_table.sql`, tabla `cash_sessions` +
-función `current_user_id()`) aplicada. `final_balance` iguala a
-`initial_balance` — esto quedó desactualizado con la spec 05: hoy ya
-existen cobros (`transactions`) pero el cierre de caja todavía no los
-suma, ver deuda técnica de "Alta Prioridad" en `docs/deuda-tecnica.md`.
+función `current_user_id()`) aplicada. Desde el sprint de estabilización
+(2026-09-16), `/caja` muestra el saldo actual (inicial + cobros −
+egresos) y el cierre guarda ese mismo número como `final_balance`.
 Ver `docs/arquitectura.md` sección "Sesión de Caja Diaria" y
 `docs/decisiones.md`.
 
@@ -162,10 +162,16 @@ proyecto real (`supabase db push`, confirmado por el usuario tras
 consultarle porque la spec no cerraba sola). Probado además de punta a
 punta en el navegador contra el proyecto real (agendar, bloqueo de cobro
 sin caja, navegar días, cancelar, cobrar y verificar la `transaction` en
-la base). Esa prueba confirmó dos bugs abiertos: turnos después de las
-21:00 locales aparecen en el día siguiente (UTC) y `end_time` puede
-quedar antes que `start_time` — ver "Media Prioridad" en
-`docs/deuda-tecnica.md`. Ver `docs/arquitectura.md`
+la base). Esa prueba encontró dos bugs que se corrigieron en el sprint de
+estabilización del mismo día: las fechas del negocio ahora se resuelven
+en `America/Asuncion` (`src/lib/dates.ts`) y cobrar antes de hora corre
+`start_time` para que la duración no quede negativa (los turnos de días
+futuros no se pueden cobrar). En el mismo sprint `/caja` pasó a mostrar
+el saldo actual y el cierre a guardarlo como `final_balance`. Los tres
+arreglos se volvieron a probar en el navegador contra el proyecto real
+(turno de 21:30 en el día correcto, cobro anticipado con duración de 30
+min, cobro de un turno de mañana rechazado, saldo 50.000 + 30.000 =
+80.000 en pantalla y en `final_balance`). Ver `docs/arquitectura.md`
 sección "Agenda de Turnos Programados" y `docs/decisiones.md`.
 
 El resto (productos, estadísticas) sigue siendo esqueleto sin lógica.

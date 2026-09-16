@@ -1,13 +1,8 @@
 import { getAgendaAction } from "@/actions/agenda.actions";
 import { getCurrentCashSessionAction } from "@/actions/cash.actions";
 import { getServicesAction } from "@/actions/service.actions";
+import { businessToday, isValidDateISO } from "@/lib/dates";
 import { AgendaView } from "./_components/AgendaView";
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 interface AgendaPageProps {
   searchParams: Promise<{ date?: string }>;
@@ -16,7 +11,7 @@ interface AgendaPageProps {
 export default async function AgendaPage({ searchParams }: AgendaPageProps) {
   const params = await searchParams;
   const dateISO =
-    params.date && DATE_RE.test(params.date) ? params.date : todayISO();
+    params.date && isValidDateISO(params.date) ? params.date : businessToday();
 
   const [agendaResult, cashResult, servicesResult] = await Promise.all([
     getAgendaAction(dateISO),

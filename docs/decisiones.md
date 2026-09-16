@@ -726,3 +726,56 @@ falta revisar si también necesita poder actualizar turnos ajenos (hoy no
 puede). Migración aplicada contra el proyecto real con `supabase db push`
 (quedó bloqueada por permisos al principio de la sesión; el usuario
 confirmó aplicarla, ver `docs/deuda-tecnica.md`).
+
+## 2026-09-16 — Fechas del negocio en `America/Asuncion`, resueltas en el servidor
+Elegido: `src/lib/dates.ts` (sin librerías, con `Intl`) calcula "hoy", los
+cortes de día `[00:00, 00:00 del día siguiente)` y el instante de un turno
+en la zona `America/Asuncion`. `scheduleAppointmentAction` ahora recibe
+`dateISO` + `time` (HH:MM) por separado en vez de `startTimeISO`, y es el
+servidor el que arma el instante.
+Descartado: (1) seguir cortando los días en UTC — la prueba en el
+navegador mostró que un turno de las 21:30 aparecía en el día siguiente;
+(2) mandar el instante ya armado desde el celular, como pedía la spec 06
+(`startTimeISO`) — depende de que el dispositivo tenga bien configurada la
+zona; (3) un offset fijo de -3 — la zona IANA sigue siendo correcta si
+Paraguay vuelve a cambiar de horario; (4) `date-fns-tz` u otra librería —
+`Intl` alcanza para esto.
+Por qué: el servidor corre en UTC y en Paraguay, desde las 21:00, UTC ya es
+el día siguiente. Resolver todo con la zona del negocio en un solo lugar
+evita que servidor, base y celular discrepen sobre qué día es.
+Costo: la zona está fija para todas las barberías (ver
+`docs/deuda-tecnica.md`). El payload de `scheduleAppointmentAction` ya no
+coincide con la spec 06.
+
+## 2026-09-16 — Cobrar un turno antes de hora corre `start_time`; no se cobran turnos de días futuros
+Elegido: en `completeScheduledAppointmentAction`, si el cobro ocurre antes
+de la hora agendada, además de `end_time = ahora` se guarda
+`start_time = ahora − duración del servicio`. Si el turno es de un día
+posterior a hoy (hora de Paraguay), el cobro se rechaza.
+Descartado: dejar `start_time` como estaba (la prueba en el navegador dejó
+un turno con `end_time` anterior a `start_time`) y `end_time =
+max(start_time, ahora)` (inventaría un fin en el futuro para un corte que
+ya terminó).
+Por qué: la duración de cada corte tiene que ser siempre positiva y
+realista para las estadísticas de la spec 08. Sin el bloqueo de días
+futuros, cobrar hoy un turno de mañana lo movería al día de hoy. Lo
+propuso el usuario (rol arquitecto) y se aceptó el bloqueo recomendado.
+Costo: la hora agendada original se pierde al cobrar antes de hora (ver
+`docs/deuda-tecnica.md`).
+
+## 2026-09-16 — Saldo de caja calculado en el servidor, el mismo para la pantalla y el cierre
+Elegido: `computeBalance` (privada en `cash.actions.ts`) suma saldo
+inicial + ingresos − egresos leyendo `transactions`. La usan
+`getCashBalanceAction` (pantalla `/caja`) y `closeCashSessionAction`
+(`final_balance`). Si no se pueden leer las transacciones, la caja no se
+cierra.
+Descartado: mostrar el saldo real solo en `/caja` y dejar el cierre como
+estaba — pantalla y cierre darían números distintos. También se descartó
+sumar el saldo dentro de `getCurrentCashSessionAction`, porque `/inicio` y
+`/agenda` la llaman solo para saber si hay caja abierta y pagarían una
+consulta extra.
+Por qué: el barbero tiene que ver cuánta plata hay en la caja, y el cierre
+tiene que guardar ese mismo número (regla 1 de CLAUDE.md: el cálculo va en
+el servidor).
+Costo: la suma se hace en JS sobre las filas del día, no con un `SUM` en
+SQL. Alcanza para el volumen de una caja diaria.

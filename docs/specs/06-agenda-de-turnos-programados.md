@@ -62,3 +62,10 @@ Rutas y componentes a tocar en `src/app/(dashboard)/agenda/`:
 - **Solapamiento de turnos:** Se permite crear un turno en un horario ocupado. Es común que el barbero empiece un trabajo secundario (ej. preparar un tinte) mientras termina un corte anterior. No habrá bloqueo estricto en la BD, simplemente se listarán ordenados por su hora de inicio.
 - **Hora en el pasado:** Se permitirá agendar turnos en el pasado para el día en curso (ej: el barbero se olvidó de anotarlo a la mañana y lo hace al mediodía).
 - **Precio modificado en BD:** Si un servicio cambia de precio entre que se agendó el turno y que el cliente asiste, al completar el turno se cobrará el precio *actual* en catálogo. Esta es una decisión consciente para mantener la base de datos simple, ya que los cambios de precios en el negocio suelen aplicar a todas las citas futuras.
+
+## 7. Cambios posteriores a la implementación (2026-09-16)
+Esta spec se implementó y después se ajustó en un sprint de estabilización. El código difiere del texto de arriba en estos puntos (detalle en `docs/decisiones.md`):
+- **RLS:** las políticas "ya existentes" no alcanzaban; se agregó `appointments_update_own` (migración `20260916010000_appointments_update_own.sql`).
+- **`scheduleAppointmentAction`:** recibe `{ clientName, serviceId, dateISO, time }` en vez de `startTimeISO`. El servidor arma el instante en `America/Asuncion` (`src/lib/dates.ts`).
+- **`getAgendaAction`:** corta el día en hora de Paraguay, no en UTC.
+- **`completeScheduledAppointmentAction`:** si se cobra antes de la hora agendada, además de `end_time` pisa `start_time = ahora − duración`. No permite cobrar turnos de días futuros.

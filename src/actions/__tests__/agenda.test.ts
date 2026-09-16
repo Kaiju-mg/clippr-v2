@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { createClient } from "@/lib/supabase/server";
 import type { Appointment } from "@/types";
 
@@ -66,6 +66,10 @@ function mockSupabase(builders: Record<string, QueryBuilderMock<unknown>>) {
   return { from };
 }
 
+// "Ahora" fijo para los tests de cobro: miércoles 16/09/2026 10:12 en
+// Paraguay (UTC-3).
+const AHORA = new Date("2026-09-16T13:12:00.000Z");
+
 const CASH_SESSION_ABIERTA = { id: "cs1", status: "open" };
 const CASH_SESSION_CERRADA = { id: "cs1", status: "closed" };
 const SERVICIO_ACTIVO = {
@@ -76,25 +80,46 @@ const SERVICIO_ACTIVO = {
   is_active: true,
 };
 
-const TURNO_AGENDADO = {
-  id: "apt1",
-  service_id: "svc1",
-  status: "scheduled",
-};
-
 const APPOINTMENT: Appointment = {
   id: "apt1",
   barbershop_id: "b1",
   user_id: "user-1",
   service_id: "svc1",
   client_name: "Juan",
-  start_time: "2026-09-20T13:00:00.000Z",
-  end_time: "2026-09-20T13:20:00.000Z",
+  start_time: "2026-09-16T18:00:00.000Z",
+  end_time: "2026-09-16T18:20:00.000Z",
   status: "scheduled",
 };
 
+function turnoAgendado(startTime: string) {
+  return { id: "apt1", service_id: "svc1", status: "scheduled", start_time: startTime };
+}
+
+/** Arma los builders de un cobro completo; el select y el update de appointments comparten builder. */
+function mockCobro(startTime: string, transactionsError: { message: string } | null = null) {
+  const cashSessionsBuilder = createBuilder({ data: CASH_SESSION_ABIERTA, error: null });
+  const appointmentsBuilder = createBuilder<unknown>({ data: null, error: null });
+  appointmentsBuilder.maybeSingle = vi
+    .fn()
+    .mockResolvedValueOnce({ data: turnoAgendado(startTime), error: null })
+    .mockResolvedValueOnce({ data: { ...APPOINTMENT, status: "completed" }, error: null });
+  const servicesBuilder = createBuilder({ data: SERVICIO_ACTIVO, error: null });
+  const transactionsBuilder = createBuilder({ data: null, error: transactionsError });
+  mockSupabase({
+    cash_sessions: cashSessionsBuilder,
+    appointments: appointmentsBuilder,
+    services: servicesBuilder,
+    transactions: transactionsBuilder,
+  });
+  return { appointmentsBuilder, transactionsBuilder };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("getAgendaAction", () => {
@@ -105,14 +130,11 @@ describe("getAgendaAction", () => {
     expect(createClient).not.toHaveBeenCalled();
   });
 
-  it("filtra por el rango [00:00, 24:00) UTC del día pedido, ordenado por start_time", async () => {
-    const appointmentsBuilder = createBuilder({
-      data: [APPOINTMENT],
-      error: null,
-    });
+  it("filtra por el día de Paraguay (00:00 a 00:00 del día siguiente), ordenado por start_time", async () => {
+    const appointmentsBuilder = createBuilder({ data: [APPOINTMENT], error: null });
     mockSupabase({ appointments: appointmentsBuilder });
 
-    const result = await getAgendaAction("2026-09-20");
+    const result = await getAgendaAction("2026-09-16");
 
     expect(appointmentsBuilder.in).toHaveBeenCalledWith("status", [
       "scheduled",
@@ -121,11 +143,11 @@ describe("getAgendaAction", () => {
     ]);
     expect(appointmentsBuilder.gte).toHaveBeenCalledWith(
       "start_time",
-      "2026-09-20T00:00:00.000Z",
+      "2026-09-16T03:00:00.000Z",
     );
     expect(appointmentsBuilder.lt).toHaveBeenCalledWith(
       "start_time",
-      "2026-09-21T00:00:00.000Z",
+      "2026-09-17T03:00:00.000Z",
     );
     expect(appointmentsBuilder.order).toHaveBeenCalledWith("start_time", {
       ascending: true,
@@ -134,13 +156,10 @@ describe("getAgendaAction", () => {
   });
 
   it("devuelve un error genérico si falla la consulta", async () => {
-    const appointmentsBuilder = createBuilder({
-      data: null,
-      error: { message: "boom" },
-    });
+    const appointmentsBuilder = createBuilder({ data: null, error: { message: "boom" } });
     mockSupabase({ appointments: appointmentsBuilder });
 
-    const result = await getAgendaAction("2026-09-20");
+    const result = await getAgendaAction("2026-09-16");
 
     expect(result).toEqual({
       success: false,
@@ -154,7 +173,8 @@ describe("scheduleAppointmentAction — validación", () => {
     const result = await scheduleAppointmentAction({
       clientName: "   ",
       serviceId: "svc1",
-      startTimeISO: "2026-09-20T13:00:00.000Z",
+      dateISO: "2026-09-16",
+      time: "15:00",
     });
 
     expect(result).toEqual({
@@ -164,11 +184,15 @@ describe("scheduleAppointmentAction — validación", () => {
     expect(createClient).not.toHaveBeenCalled();
   });
 
-  it("rechaza un startTimeISO que no es una fecha válida", async () => {
+  it.each([
+    ["fecha inválida", "2026-02-30", "15:00"],
+    ["hora inválida", "2026-09-16", "25:00"],
+  ])("rechaza %s", async (_caso, dateISO, time) => {
     const result = await scheduleAppointmentAction({
       clientName: "Juan",
       serviceId: "svc1",
-      startTimeISO: "no-es-una-fecha",
+      dateISO,
+      time,
     });
 
     expect(result).toEqual({
@@ -181,13 +205,13 @@ describe("scheduleAppointmentAction — validación", () => {
 
 describe("scheduleAppointmentAction — servicio", () => {
   it("rechaza si el servicio no existe", async () => {
-    const servicesBuilder = createBuilder({ data: null, error: null });
-    mockSupabase({ services: servicesBuilder });
+    mockSupabase({ services: createBuilder({ data: null, error: null }) });
 
     const result = await scheduleAppointmentAction({
       clientName: "Juan",
       serviceId: "svc1",
-      startTimeISO: "2026-09-20T13:00:00.000Z",
+      dateISO: "2026-09-16",
+      time: "15:00",
     });
 
     expect(result).toEqual({
@@ -197,16 +221,15 @@ describe("scheduleAppointmentAction — servicio", () => {
   });
 
   it("rechaza si el servicio está inactivo", async () => {
-    const servicesBuilder = createBuilder({
-      data: { ...SERVICIO_ACTIVO, is_active: false },
-      error: null,
+    mockSupabase({
+      services: createBuilder({ data: { ...SERVICIO_ACTIVO, is_active: false }, error: null }),
     });
-    mockSupabase({ services: servicesBuilder });
 
     const result = await scheduleAppointmentAction({
       clientName: "Juan",
       serviceId: "svc1",
-      startTimeISO: "2026-09-20T13:00:00.000Z",
+      dateISO: "2026-09-16",
+      time: "15:00",
     });
 
     expect(result).toEqual({
@@ -217,44 +240,57 @@ describe("scheduleAppointmentAction — servicio", () => {
 });
 
 describe("scheduleAppointmentAction — happy path", () => {
-  it("calcula end_time sumando la duración del servicio y recorta el nombre del cliente", async () => {
-    const servicesBuilder = createBuilder({
-      data: SERVICIO_ACTIVO,
-      error: null,
-    });
-    const appointmentsBuilder = createBuilder({
-      data: APPOINTMENT,
-      error: null,
-    });
+  it("arma el instante en hora de Paraguay, suma la duración y recorta el nombre", async () => {
+    const appointmentsBuilder = createBuilder({ data: APPOINTMENT, error: null });
     mockSupabase({
-      services: servicesBuilder,
+      services: createBuilder({ data: SERVICIO_ACTIVO, error: null }),
       appointments: appointmentsBuilder,
     });
 
     const result = await scheduleAppointmentAction({
       clientName: "  Juan  ",
       serviceId: "svc1",
-      startTimeISO: "2026-09-20T13:00:00.000Z",
+      dateISO: "2026-09-16",
+      time: "15:00",
     });
 
     expect(appointmentsBuilder.insert).toHaveBeenCalledWith({
       service_id: "svc1",
       client_name: "Juan",
-      start_time: "2026-09-20T13:00:00.000Z",
-      end_time: "2026-09-20T13:20:00.000Z",
+      start_time: "2026-09-16T18:00:00.000Z",
+      end_time: "2026-09-16T18:20:00.000Z",
       status: "scheduled",
     });
     expect(result).toEqual({ success: true, data: APPOINTMENT });
   });
+
+  it("un turno a las 21:30 queda dentro del rango del mismo día de Paraguay", async () => {
+    const appointmentsBuilder = createBuilder({ data: APPOINTMENT, error: null });
+    mockSupabase({
+      services: createBuilder({ data: SERVICIO_ACTIVO, error: null }),
+      appointments: appointmentsBuilder,
+    });
+
+    await scheduleAppointmentAction({
+      clientName: "Pedro",
+      serviceId: "svc1",
+      dateISO: "2026-09-16",
+      time: "21:30",
+    });
+
+    const { start_time } = appointmentsBuilder.insert.mock.calls[0][0];
+    expect(start_time).toBe("2026-09-17T00:30:00.000Z");
+    // Rango de getAgendaAction("2026-09-16"): [03:00Z del 16, 03:00Z del 17)
+    expect(start_time >= "2026-09-16T03:00:00.000Z").toBe(true);
+    expect(start_time < "2026-09-17T03:00:00.000Z").toBe(true);
+  });
 });
 
-describe("completeScheduledAppointmentAction — caja", () => {
+describe("completeScheduledAppointmentAction — caja y turno", () => {
   it("rechaza si la caja no está abierta", async () => {
-    const cashSessionsBuilder = createBuilder({
-      data: CASH_SESSION_CERRADA,
-      error: null,
+    mockSupabase({
+      cash_sessions: createBuilder({ data: CASH_SESSION_CERRADA, error: null }),
     });
-    mockSupabase({ cash_sessions: cashSessionsBuilder });
 
     const result = await completeScheduledAppointmentAction("apt1", "cs1");
 
@@ -263,18 +299,11 @@ describe("completeScheduledAppointmentAction — caja", () => {
       error: "Debes abrir tu caja diaria antes de cobrar un corte.",
     });
   });
-});
 
-describe("completeScheduledAppointmentAction — turno", () => {
   it("rechaza si el turno no existe (o es de otro barbero vía RLS)", async () => {
-    const cashSessionsBuilder = createBuilder({
-      data: CASH_SESSION_ABIERTA,
-      error: null,
-    });
-    const appointmentsBuilder = createBuilder({ data: null, error: null });
     mockSupabase({
-      cash_sessions: cashSessionsBuilder,
-      appointments: appointmentsBuilder,
+      cash_sessions: createBuilder({ data: CASH_SESSION_ABIERTA, error: null }),
+      appointments: createBuilder({ data: null, error: null }),
     });
 
     const result = await completeScheduledAppointmentAction("apt1", "cs1");
@@ -286,17 +315,12 @@ describe("completeScheduledAppointmentAction — turno", () => {
   });
 
   it("rechaza si el turno ya fue completado o cancelado", async () => {
-    const cashSessionsBuilder = createBuilder({
-      data: CASH_SESSION_ABIERTA,
-      error: null,
-    });
-    const appointmentsBuilder = createBuilder({
-      data: { ...TURNO_AGENDADO, status: "cancelled" },
-      error: null,
-    });
     mockSupabase({
-      cash_sessions: cashSessionsBuilder,
-      appointments: appointmentsBuilder,
+      cash_sessions: createBuilder({ data: CASH_SESSION_ABIERTA, error: null }),
+      appointments: createBuilder({
+        data: { ...turnoAgendado(APPOINTMENT.start_time), status: "cancelled" },
+        error: null,
+      }),
     });
 
     const result = await completeScheduledAppointmentAction("apt1", "cs1");
@@ -306,80 +330,66 @@ describe("completeScheduledAppointmentAction — turno", () => {
       error: "Turno no encontrado o ya fue actualizado.",
     });
   });
-});
 
-describe("completeScheduledAppointmentAction — happy path y errores", () => {
-  it("usa service.price del servidor y arma la transacción de ingreso", async () => {
-    const cashSessionsBuilder = createBuilder({
-      data: CASH_SESSION_ABIERTA,
-      error: null,
-    });
-    // appointments se usa dos veces: el select inicial y el update final.
-    // Ambos devuelven vía maybeSingle, así que un solo builder alcanza.
-    const appointmentsBuilder = createBuilder<unknown>({
-      data: TURNO_AGENDADO,
-      error: null,
-    });
-    appointmentsBuilder.maybeSingle = vi
-      .fn()
-      .mockResolvedValueOnce({ data: TURNO_AGENDADO, error: null })
-      .mockResolvedValueOnce({ data: { ...APPOINTMENT, status: "completed" }, error: null });
-    const servicesBuilder = createBuilder({
-      data: SERVICIO_ACTIVO,
-      error: null,
-    });
-    const transactionsBuilder = createBuilder({ data: null, error: null });
-    mockSupabase({
-      cash_sessions: cashSessionsBuilder,
-      appointments: appointmentsBuilder,
-      services: servicesBuilder,
-      transactions: transactionsBuilder,
-    });
+  it("rechaza cobrar un turno de un día futuro (en hora de Paraguay)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(AHORA);
+    const { appointmentsBuilder, transactionsBuilder } = mockCobro(
+      "2026-09-17T12:00:00.000Z", // jueves 09:00 en Paraguay
+    );
 
     const result = await completeScheduledAppointmentAction("apt1", "cs1");
 
-    expect(appointmentsBuilder.update).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "completed" }),
+    expect(result).toEqual({
+      success: false,
+      error: "No podés cobrar un turno de un día futuro.",
+    });
+    expect(appointmentsBuilder.update).not.toHaveBeenCalled();
+    expect(transactionsBuilder.insert).not.toHaveBeenCalled();
+  });
+});
+
+describe("completeScheduledAppointmentAction — cobro", () => {
+  it("cobrado antes de la hora agendada: corre start_time a ahora - duración", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(AHORA);
+    const { appointmentsBuilder, transactionsBuilder } = mockCobro(
+      "2026-09-16T18:00:00.000Z", // turno de las 15:00, cobrado a las 10:12
     );
+
+    const result = await completeScheduledAppointmentAction("apt1", "cs1");
+
+    expect(appointmentsBuilder.update).toHaveBeenCalledWith({
+      status: "completed",
+      end_time: "2026-09-16T13:12:00.000Z",
+      start_time: "2026-09-16T12:52:00.000Z",
+    });
     expect(transactionsBuilder.insert).toHaveBeenCalledWith({
       cash_session_id: "cs1",
       type: "income",
       amount: SERVICIO_ACTIVO.price,
       description: `Corte: ${SERVICIO_ACTIVO.name}`,
     });
-    expect(result).toEqual({
-      success: true,
-      data: { ...APPOINTMENT, status: "completed" },
+    expect(result.success).toBe(true);
+  });
+
+  it("cobrado después de la hora agendada: no toca start_time", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(AHORA);
+    const { appointmentsBuilder } = mockCobro("2026-09-16T12:30:00.000Z");
+
+    await completeScheduledAppointmentAction("apt1", "cs1");
+
+    expect(appointmentsBuilder.update).toHaveBeenCalledWith({
+      status: "completed",
+      end_time: "2026-09-16T13:12:00.000Z",
     });
   });
 
   it("avisa del desfase si el turno se actualiza pero falla la transacción", async () => {
-    const cashSessionsBuilder = createBuilder({
-      data: CASH_SESSION_ABIERTA,
-      error: null,
-    });
-    const appointmentsBuilder = createBuilder<unknown>({
-      data: TURNO_AGENDADO,
-      error: null,
-    });
-    appointmentsBuilder.maybeSingle = vi
-      .fn()
-      .mockResolvedValueOnce({ data: TURNO_AGENDADO, error: null })
-      .mockResolvedValueOnce({ data: APPOINTMENT, error: null });
-    const servicesBuilder = createBuilder({
-      data: SERVICIO_ACTIVO,
-      error: null,
-    });
-    const transactionsBuilder = createBuilder({
-      data: null,
-      error: { message: "boom" },
-    });
-    mockSupabase({
-      cash_sessions: cashSessionsBuilder,
-      appointments: appointmentsBuilder,
-      services: servicesBuilder,
-      transactions: transactionsBuilder,
-    });
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(AHORA);
+    mockCobro("2026-09-16T12:30:00.000Z", { message: "boom" });
 
     const result = await completeScheduledAppointmentAction("apt1", "cs1");
 
@@ -393,8 +403,7 @@ describe("completeScheduledAppointmentAction — happy path y errores", () => {
 
 describe("cancelAppointmentAction", () => {
   it("rechaza si el turno no existe, es ajeno, o ya fue resuelto", async () => {
-    const appointmentsBuilder = createBuilder({ data: null, error: null });
-    mockSupabase({ appointments: appointmentsBuilder });
+    mockSupabase({ appointments: createBuilder({ data: null, error: null }) });
 
     const result = await cancelAppointmentAction("apt1");
 
@@ -406,17 +415,12 @@ describe("cancelAppointmentAction", () => {
 
   it("cancela un turno agendado", async () => {
     const cancelled = { ...APPOINTMENT, status: "cancelled" as const };
-    const appointmentsBuilder = createBuilder({
-      data: cancelled,
-      error: null,
-    });
+    const appointmentsBuilder = createBuilder({ data: cancelled, error: null });
     mockSupabase({ appointments: appointmentsBuilder });
 
     const result = await cancelAppointmentAction("apt1");
 
-    expect(appointmentsBuilder.update).toHaveBeenCalledWith({
-      status: "cancelled",
-    });
+    expect(appointmentsBuilder.update).toHaveBeenCalledWith({ status: "cancelled" });
     expect(result).toEqual({ success: true, data: cancelled });
   });
 });

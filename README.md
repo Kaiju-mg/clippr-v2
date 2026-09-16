@@ -13,7 +13,7 @@ npm install
 cp .env.example .env.local   # completar con credenciales de Supabase
 ```
 
-Las variables de Supabase no son necesarias para levantar el server ni para el health check; sí lo serán cuando se agregue auth/datos.
+Las variables de Supabase no son necesarias para levantar el server ni para el health check; sí para auth y datos (login, caja, agenda, etc.).
 
 ## Scripts
 
@@ -42,11 +42,13 @@ src/
   app/                 # Rutas (App Router)
     api/health/        # Health check
     (auth)/            # Login/registro
-    (dashboard)/       # agenda, caja, estadisticas
+    (dashboard)/       # inicio, agenda, caja, servicios, equipo, mas, estadisticas (vacío)
   components/          # ui, forms, timers
-  lib/supabase/        # clientes browser y server
-  lib/utils.ts
-  actions/             # Server Actions (lógica de negocio — vacío por ahora)
-  store/               # Estado global (Zustand — vacío por ahora)
+  lib/supabase/        # clientes browser, server y admin
+  lib/utils.ts         # formatGuaranies, cn
+  lib/dates.ts         # fechas del negocio en America/Asuncion
+  actions/             # Server Actions (lógica de negocio: auth, servicios, equipo, caja, walk-ins, agenda)
+  store/               # Estado global (Zustand: timers)
   types/               # Tipos del dominio
+supabase/migrations/   # SQL versionado (schema + RLS), aplicar con `supabase db push`
 ```
