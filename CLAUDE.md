@@ -200,4 +200,27 @@ que se muestra una sola vez al dueño, en vez de la fija `Clippr2026!`, y
 `/mas/cambiar-password` permite cambiarla (opcional, pide la actual). Sin
 cambio forzado ni recuperación por email (Fase 2). Ver `docs/decisiones.md`.
 
-El resto (estadísticas) sigue siendo esqueleto sin lógica.
+Spec 08 (estadísticas, niveles y rachas) implementada y probada con Vitest
+(mocks de Supabase). `/estadisticas` decide por rol: el dueño ve KPIs de la
+barbería (ingresos, cortes, promedio diario, ticket promedio) con filtros
+Hoy/Semana/Mes vía `?rango=` y un leaderboard del equipo; el barbero ve su
+día, su racha y una barra de progreso de nivel. Las píldoras de `/inicio`
+dejaron de ser estáticas y `Estadísticas` se sumó a `/mas` (la BottomNav
+sigue con 4 íconos). Dos reglas que la spec dejaba abiertas se definieron con
+el usuario: el **nivel es una liga de 30 días móviles** (junior <40, pro
+40–90, senior 91–150, élite 151+, puede bajar; `src/lib/levels.ts`) y la
+**racha tolera un día de gracia** (0 días sin cambio, 1–2 días +1, 3+ vuelve
+a 1; `src/lib/streaks.ts`). Las dos se recalculan en
+`updateStreakAndLevel`, dentro de `closeCashSessionAction`, después del
+cierre: si falla, se loguea y la caja igual queda cerrada.
+Migración `20260917000000_owner_stats_visibility.sql` (función
+`current_user_role()` + `select` de `cash_sessions`/`appointments`/
+`transactions` abierto al dueño de la barbería) **escrita pero NO aplicada
+todavía** con `supabase db push`, y `/estadisticas` no se probó en el
+navegador contra el proyecto real. Ojo: al aflojar esas policies,
+`getAgendaAction` pasó a filtrar `user_id` a mano — ninguna consulta puede
+seguir asumiendo que RLS la acota a lo propio sobre esas tres tablas. Ver
+`docs/arquitectura.md` sección "Estadísticas, Niveles y Rachas",
+`docs/decisiones.md` y `docs/deuda-tecnica.md`.
+
+El resto (nada pendiente del backlog) sigue como estaba.

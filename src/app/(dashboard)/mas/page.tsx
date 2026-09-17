@@ -2,7 +2,11 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { logoutAction } from "@/actions/auth.actions";
 
+// Estadísticas entra acá y no en la BottomNav: la barra se mantiene en 4
+// íconos de uso diario (decisión del 2026-09-15, ver docs/decisiones.md) y
+// las estadísticas tienen cadencia semanal/mensual.
 const LINKS = [
+  { href: "/estadisticas", label: "Estadísticas" },
   { href: "/servicios", label: "Servicios" },
   { href: "/productos", label: "Productos" },
   { href: "/equipo", label: "Equipo" },

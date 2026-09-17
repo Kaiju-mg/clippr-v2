@@ -2,6 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import {
+  businessDateOf,
+  businessRangeUtc,
+  shiftDateISO,
+} from "@/lib/dates";
+import { LEVEL_WINDOW_DAYS, levelForCuts } from "@/lib/levels";
+import { nextStreakCount } from "@/lib/streaks";
 import type { CashSession, Transaction, TransactionType } from "@/types";
 
 export type CashActionResult<T> =
@@ -101,6 +108,182 @@ async function computeBalance(
     expense,
     current: Number(initialBalance) + income - expense,
   };
+}
+
+/**
+ * Cuántas cajas cerradas hacia atrás se miran para encontrar la última
+ * jornada válida. Con un día de gracia de 2 días alcanza de sobra: sirve
+ * para descartar varias cajas del mismo día sin traer el historial entero.
+ */
+const CAJAS_CERRADAS_A_REVISAR = 10;
+
+/**
+ * Actualiza `streak_count` y `level` del barbero al cerrar una caja con
+ * actividad (spec 08, sección 3). Toda esta lógica vive en el servidor: en
+ * la v1 la racha se calculaba en el frontend y cualquiera podía inflarla
+ * alterando la petición (ver docs/aprendizajes-v1.md).
+ *
+ * - **Racha:** una jornada cuenta si el barbero cerró una caja con al menos
+ *   un ingreso. Se compara el día del negocio (`start_time`, no `end_time`:
+ *   cerrar a las 2 AM sigue siendo la jornada anterior — caso borde 3 de la
+ *   spec) contra la última jornada válida anterior, con un día de gracia
+ *   (ver `@/lib/streaks`).
+ * - **Nivel:** "liga" según los cortes de los últimos 30 días móviles, así
+ *   que puede subir *y* bajar (ver `@/lib/levels`).
+ *
+ * No devuelve error: si algo falla acá, la caja ya quedó cerrada y correcta.
+ * Se loguea y se sigue — perder un punto de racha no justifica hacerle creer
+ * al barbero que el cierre no se guardó.
+ */
+async function updateStreakAndLevel(
+  supabase: SupabaseServerClient,
+  closedSession: CashSession,
+  incomeOfSession: number,
+): Promise<void> {
+  const { data: profile, error: profileError } = await supabase
+    .from("users")
+    .select("id, streak_count, level")
+    .eq("id", closedSession.user_id)
+    .maybeSingle<{ id: string; streak_count: number; level: string }>();
+
+  if (profileError || !profile) {
+    console.error(
+      "updateStreakAndLevel (users):",
+      profileError?.message ?? "perfil no encontrado",
+    );
+    return;
+  }
+
+  const today = businessDateOf(new Date(closedSession.start_time));
+
+  // Nivel: cortes completados en la ventana móvil, incluyendo hoy.
+  const windowRange = businessRangeUtc(
+    shiftDateISO(today, -(LEVEL_WINDOW_DAYS - 1)),
+    today,
+  );
+
+  const { count: windowCuts, error: cutsError } = await supabase
+    .from("appointments")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", profile.id)
+    .eq("status", "completed")
+    .gte("start_time", windowRange.start)
+    .lt("start_time", windowRange.end);
+
+  if (cutsError) {
+    console.error("updateStreakAndLevel (appointments):", cutsError.message);
+    return;
+  }
+
+  const level = levelForCuts(windowCuts ?? 0);
+
+  // Una caja sin un solo ingreso no es una jornada trabajada: no suma ni
+  // rompe la racha, pero el nivel igual se recalcula.
+  if (incomeOfSession <= 0) {
+    await applyStreakAndLevel(supabase, profile.id, profile.streak_count, level);
+    return;
+  }
+
+  const { data: previous, error: previousError } = await supabase
+    .from("cash_sessions")
+    .select("id, start_time")
+    .eq("user_id", profile.id)
+    .eq("status", "closed")
+    .neq("id", closedSession.id)
+    .order("start_time", { ascending: false })
+    .limit(CAJAS_CERRADAS_A_REVISAR);
+
+  if (previousError) {
+    console.error(
+      "updateStreakAndLevel (cash_sessions):",
+      previousError.message,
+    );
+    return;
+  }
+
+  const previousSessions = (previous ?? []) as {
+    id: string;
+    start_time: string;
+  }[];
+
+  const qualifyingDates = await businessDatesWithIncome(
+    supabase,
+    previousSessions,
+  );
+
+  if (qualifyingDates === null) return;
+
+  const sameDayAlreadyCounted = qualifyingDates.includes(today);
+  const earlierDates = qualifyingDates.filter((date) => date < today);
+  const lastWorkedDate =
+    earlierDates.length > 0
+      ? earlierDates.reduce((latest, date) => (date > latest ? date : latest))
+      : null;
+
+  const streak = nextStreakCount(
+    profile.streak_count,
+    lastWorkedDate,
+    today,
+    sameDayAlreadyCounted,
+  );
+
+  await applyStreakAndLevel(supabase, profile.id, streak, level);
+}
+
+/**
+ * Días del negocio (sin repetir) de las cajas que tuvieron al menos un
+ * ingreso. Una sola consulta para todas las cajas, en vez de una por caja.
+ * Devuelve null si la consulta falla.
+ */
+async function businessDatesWithIncome(
+  supabase: SupabaseServerClient,
+  sessions: { id: string; start_time: string }[],
+): Promise<string[] | null> {
+  if (sessions.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("cash_session_id")
+    .eq("type", "income")
+    .in(
+      "cash_session_id",
+      sessions.map((session) => session.id),
+    );
+
+  if (error) {
+    console.error("businessDatesWithIncome:", error.message);
+    return null;
+  }
+
+  const withIncome = new Set(
+    ((data ?? []) as { cash_session_id: string }[]).map(
+      (row) => row.cash_session_id,
+    ),
+  );
+
+  return [
+    ...new Set(
+      sessions
+        .filter((session) => withIncome.has(session.id))
+        .map((session) => businessDateOf(new Date(session.start_time))),
+    ),
+  ];
+}
+
+async function applyStreakAndLevel(
+  supabase: SupabaseServerClient,
+  userId: string,
+  streakCount: number,
+  level: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("users")
+    .update({ streak_count: streakCount, level })
+    .eq("id", userId);
+
+  if (error) {
+    console.error("applyStreakAndLevel:", error.message);
+  }
 }
 
 /**
@@ -276,8 +459,16 @@ export async function closeCashSessionAction(
     return { success: false, error: MENSAJE_NO_ENCONTRADA };
   }
 
+  const closed = updated as CashSession;
+
+  // Gamificación después del cierre, nunca antes: si la racha fallara, la
+  // caja ya está cerrada con su saldo correcto.
+  await updateStreakAndLevel(supabase, closed, balance.income);
+
   revalidatePath("/caja");
-  return { success: true, data: updated as CashSession };
+  revalidatePath("/inicio");
+  revalidatePath("/estadisticas");
+  return { success: true, data: closed };
 }
 
 /**

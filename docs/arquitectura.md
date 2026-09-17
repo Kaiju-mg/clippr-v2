@@ -188,9 +188,10 @@ sin caja abierta.
   evitar un hydration mismatch de SSR/Next.js (el HTML del servidor nunca
   tiene acceso a `localStorage`). Ver `docs/decisiones.md` 2026-09-15.
 - **RLS estricta, igual que `cash_sessions`:** `appointments_select_own` /
-  `appointments_insert_own` exigen `user_id = current_user_id()` además de
-  `barbershop_id = current_barbershop_id()` — ni el dueño ve turnos ajenos
-  todavía (queda para la spec 08 de estadísticas). `transactions` no tiene
+  `appointments_insert_own` exigían `user_id = current_user_id()` además de
+  `barbershop_id = current_barbershop_id()` — ni el dueño veía turnos ajenos.
+  Desde la spec 08 el `select` (no el insert/update) deja pasar también al
+  dueño de la barbería, ver "Estadísticas, Niveles y Rachas" más abajo. `transactions` no tiene
   columnas propias de tenant/usuario (sigue el modelo original, solo
   `cash_session_id`): su aislamiento se resuelve con un `EXISTS` contra
   `cash_sessions` dentro de la policy. Ver `docs/decisiones.md` 2026-09-15
@@ -239,8 +240,9 @@ pantallas del dashboard con una barra de navegación inferior fija
   `logoutAction`). Desde el 2026-09-15 es el **único** lugar con
   "Cerrar sesión": la barra superior que lo duplicaba se eliminó, ver
   "Sistema de Diseño" más abajo.
-  `Estadísticas` queda fuera tanto de la barra principal como de `/mas`
-  hasta que tenga lógica real (spec 08) — ver `docs/decisiones.md`.
+  `Estadísticas` se sumó a `/mas` en la spec 08 (sigue fuera de la barra
+  principal, que se mantiene en 4 íconos de uso diario) — ver
+  `docs/decisiones.md`.
 - **Cabecera de `/inicio`:** rediseñada el 2026-09-15, ver "Sistema de
   Diseño" más abajo para el estado actual.
 
@@ -275,10 +277,10 @@ real, mismo criterio que la dirección visual del 14/09. Ver
   en `/mas`. El layout ahora solo hace de guard de sesión
   (`auth.getUser()` + redirect) antes de `<main>` + `<BottomNav />`.
 - **Cabecera de `/inicio`:** "Hola, {nombre de pila}" (sin emoji) más dos
-  píldoras monocromas (`bg-surface-2`, ícono + texto: "Cortes de hoy" /
-  "Tu racha") **sin números** — se mantiene a propósito el criterio del
-  15/09 de no mostrar cifras hasta que exista lógica real (spec 08); un
-  "0" fijo se leería como dato real y siempre diría lo mismo.
+  píldoras monocromas (`bg-surface-2`, ícono + texto). Estuvieron **sin
+  números** hasta la spec 08, a propósito, porque no había lógica real
+  detrás; desde la spec 08 muestran los valores del día ("3 cortes hoy",
+  "Racha de 5 días") y linkean a `/estadisticas`.
 - **CTA "Iniciar corte" (`TimerList.tsx`):** reemplaza la fila
   input-chico + botón-chico por un botón de ancho completo con
   `active:scale-[0.98]`, estilo **contorno** (borde 1.5px en Tinta,
@@ -396,6 +398,61 @@ leer ni cargar movimientos en la caja del dueño.
   aparecen deshabilitados). El desglose del saldo dice "Ingresos" en vez de
   "Cobros", porque ahora incluye ventas e ingresos manuales.
 
+### Estadísticas, Niveles y Rachas (implementado)
+
+Octava rebanada vertical (`docs/specs/08-estadisticas-niveles-rachas.md`).
+Migración `20260917000000_owner_stats_visibility.sql`. Probado con Vitest
+(Supabase mockeado). Las dos reglas de negocio que la spec dejaba abiertas
+(umbrales de nivel y qué es un "día hábil") se consultaron con el usuario y
+quedaron escritas en la sección 6 de la spec y en `docs/decisiones.md`.
+
+- **RLS: el dueño ve a su equipo.** `public.current_user_role()`
+  (`SECURITY DEFINER`, mismo patrón que `current_barbershop_id()` /
+  `current_user_id()`, para no recursar al leer `users` dentro de una policy
+  de `users`) habilita el criterio nuevo de las policies de `select` de
+  `cash_sessions`, `appointments` y `transactions`:
+  `barbershop_id = current_barbershop_id() and (user_id = current_user_id()
+  or current_user_role() = 'owner')`. `insert`/`update` siguen estrictos: el
+  dueño lee lo ajeno, no lo escribe. **Consecuencia a tener presente:**
+  ninguna consulta puede seguir asumiendo que RLS la acota a lo propio sobre
+  esas tres tablas — `getAgendaAction` pasó a filtrar `user_id` a mano para
+  que `/agenda` siga siendo la agenda personal y no la de la barbería.
+- **Niveles = ligas de 30 días (`src/lib/levels.ts`):** `levelForCuts`
+  (junior < 40, pro 40–90, senior 91–150, élite 151+) y `levelProgress`
+  (avance dentro del tramo actual, no sobre el total, para que un recién
+  ascendido no vea la barra vacía). El nivel puede bajar. Los umbrales viven
+  acá, no en el Server Action.
+- **Racha con día de gracia (`src/lib/streaks.ts`):** `nextStreakCount` es
+  lógica pura (sin Supabase) para poder testear los casos borde. Una jornada
+  cuenta si el barbero cerró una caja con al menos un ingreso; se compara por
+  `start_time` (cerrar a las 2 AM sigue siendo la jornada anterior) con
+  tolerancia de 2 días.
+- **`updateStreakAndLevel`** (privada en `cash.actions.ts`, llamada por
+  `closeCashSessionAction` **después** del cierre): resuelve nivel y racha y
+  guarda las dos en `users`. Si falla, loguea y no propaga el error — la caja
+  ya está cerrada con su saldo correcto (ver `docs/decisiones.md`).
+- **`src/actions/stats.actions.ts`:** `getBarberStatsAction(dateISO)`
+  (cortes del día, cobrado del día, racha, nivel y progreso de la ventana),
+  `getOwnerStatsAction(desde, hasta)` (ingresos, cortes, promedio diario y
+  leaderboard por barbero; **valida `role === 'owner'` en el servidor** además
+  de RLS, y corta antes de tocar los datos del equipo) y
+  `getCurrentRoleAction()`. Todos los rangos se cortan con `@/lib/dates` en
+  `America/Asuncion`. `transactions` no tiene `user_id`, así que el ingreso
+  por barbero sale de dos consultas: sus `cash_sessions` del rango y después
+  los movimientos de esas cajas.
+- **UI:** `(dashboard)/estadisticas/page.tsx` decide por rol —
+  `OwnerDashboard` (filtros "Hoy / Esta semana / Este mes" como links
+  `?rango=`, mismo criterio que `?date=` en la agenda: cada cambio es un
+  fetch real, sin estado de cliente) o `BarberDashboard` (KPIs del día,
+  racha, nivel y barra de progreso). Sin librerías de gráficos: las barras
+  son `div`s con `width` en porcentaje. Los dashboards son de sólo lectura,
+  así que no usan `useOptimistic` ni Zustand. `/inicio` dejó de tener las
+  píldoras estáticas: ahora muestran los números reales del día y linkean a
+  `/estadisticas` (si la consulta falla, vuelven al texto sin cifras en vez
+  de tumbar la pantalla donde el barbero arranca los cortes).
+  `Estadísticas` entra en `/mas`, no en la `BottomNav`: la barra se mantiene
+  en 4 íconos de uso diario.
+
 ## Modelo de Datos
 
 Entidades principales enfocadas en resolver el modelo Multi-Tenant, los turnos y la gestión individual de caja:
@@ -480,8 +537,9 @@ lógica real — ver "Auth y Multi-Tenant", "Flujo de Walk-ins y
 Temporizador", "Agenda de Turnos Programados", "Productos y Movimientos de
 Caja", "Navegación Minimalista", "Sistema de Diseño", "Catálogo de
 Servicios", "Gestión de Equipo" y "Sesión de Caja Diaria" más arriba.
-`estadisticas/` sigue vacío (`.gitkeep`): es el esqueleto
-para las próximas specs.
+`estadisticas/` también tiene lógica real desde la spec 08 — ver
+"Estadísticas, Niveles y Rachas" más arriba. No quedan carpetas de
+esqueleto sin implementar.
 
 ## Las 3 Decisiones Técnicas Más Riesgosas y su Alternativa
 

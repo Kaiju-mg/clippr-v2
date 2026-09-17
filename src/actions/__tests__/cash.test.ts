@@ -27,6 +27,11 @@ interface QueryBuilderMock<T> {
   insert: ReturnType<typeof vi.fn>;
   update: ReturnType<typeof vi.fn>;
   eq: ReturnType<typeof vi.fn>;
+  neq: ReturnType<typeof vi.fn>;
+  in: ReturnType<typeof vi.fn>;
+  gte: ReturnType<typeof vi.fn>;
+  lt: ReturnType<typeof vi.fn>;
+  limit: ReturnType<typeof vi.fn>;
   order: ReturnType<typeof vi.fn>;
   single: ReturnType<typeof vi.fn>;
   maybeSingle: ReturnType<typeof vi.fn>;
@@ -45,6 +50,11 @@ function createBuilder<T>(result: MockResult<T>): QueryBuilderMock<T> {
     insert: vi.fn(() => builder),
     update: vi.fn(() => builder),
     eq: vi.fn(() => builder),
+    neq: vi.fn(() => builder),
+    in: vi.fn(() => builder),
+    gte: vi.fn(() => builder),
+    lt: vi.fn(() => builder),
+    limit: vi.fn(() => builder),
     order: vi.fn(() => builder),
     single: vi.fn(async () => result),
     maybeSingle: vi.fn(async () => result),
@@ -54,12 +64,27 @@ function createBuilder<T>(result: MockResult<T>): QueryBuilderMock<T> {
 }
 
 const AUTH_USER = { id: "auth-1" };
-const PROFILE = { id: "user-1" };
+const PROFILE = { id: "user-1", streak_count: 0, level: "junior" };
+
+/** Cajas cerradas anteriores que devuelve la consulta de racha. */
+interface GamificationMocks {
+  /** Cajas cerradas previas del barbero (para la racha). */
+  previousSessions?: { id: string; start_time: string }[];
+  /** Cortes completados en la ventana de 30 días (para el nivel). */
+  windowCuts?: number;
+  /** Perfil propio, si el test necesita una racha distinta de 0. */
+  profile?: typeof PROFILE;
+}
 
 /**
  * Simula createClient() devolviendo: auth.getUser() con el usuario logueado,
  * y from("users") resolviendo siempre al perfil de arriba. from("cash_sessions")
  * (u otra tabla) usa el builder que se le pase para cada test.
+ *
+ * Desde la spec 08, cerrar la caja dispara la evaluación de racha y nivel:
+ * `appointments` (count de la ventana) y la consulta de cajas cerradas
+ * anteriores (que resuelve por `then` sobre el builder de cash_sessions) se
+ * mockean acá con valores inofensivos por defecto.
  */
 function mockSupabase(
   cashSessionsBuilder: QueryBuilderMock<unknown>,
@@ -67,15 +92,36 @@ function mockSupabase(
     data: [],
     error: null,
   }),
+  gamification: GamificationMocks = {},
 ) {
   const usersBuilder = createBuilder<typeof PROFILE>({
-    data: PROFILE,
+    data: gamification.profile ?? PROFILE,
     error: null,
   });
+  const appointmentsBuilder = createBuilder<unknown>({
+    data: null,
+    error: null,
+  });
+  // El count de la ventana de niveles no encadena single/maybeSingle.
+  appointmentsBuilder.then = (onfulfilled) =>
+    Promise.resolve({
+      data: null,
+      count: gamification.windowCuts ?? 0,
+      error: null,
+    } as unknown as MockResult<unknown>).then(onfulfilled);
+
+  // La única consulta de cash_sessions que resuelve por `then` es la lista
+  // de cajas cerradas anteriores (la racha); el resto usa single/maybeSingle.
+  cashSessionsBuilder.then = (onfulfilled) =>
+    Promise.resolve({
+      data: gamification.previousSessions ?? [],
+      error: null,
+    } as unknown as MockResult<unknown>).then(onfulfilled);
 
   const from = vi.fn((table: string) => {
     if (table === "users") return usersBuilder;
     if (table === "transactions") return transactionsBuilder;
+    if (table === "appointments") return appointmentsBuilder;
     return cashSessionsBuilder;
   });
 

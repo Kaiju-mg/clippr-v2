@@ -58,10 +58,26 @@ function createBuilder<T>(result: MockResult<T>): QueryBuilderMock<T> {
   return builder;
 }
 
+const PERFIL = { id: "user-1" };
+
+/**
+ * `users` se resuelve siempre al perfil propio: desde la spec 08,
+ * getAgendaAction filtra la agenda por `user_id` a mano (RLS pasó a dejar
+ * que el dueño lea los turnos de todo el equipo).
+ */
 function mockSupabase(builders: Record<string, QueryBuilderMock<unknown>>) {
-  const from = vi.fn((table: string) => builders[table]);
+  const usersBuilder = createBuilder<typeof PERFIL>({
+    data: PERFIL,
+    error: null,
+  });
+  const from = vi.fn(
+    (table: string) =>
+      builders[table] ??
+      (table === "users" ? (usersBuilder as QueryBuilderMock<unknown>) : undefined),
+  );
   vi.mocked(createClient).mockResolvedValue({
     from,
+    auth: { getUser: vi.fn(async () => ({ data: { user: { id: "auth-1" } } })) },
   } as unknown as Awaited<ReturnType<typeof createClient>>);
   return { from };
 }
@@ -136,6 +152,9 @@ describe("getAgendaAction", () => {
 
     const result = await getAgendaAction("2026-09-16");
 
+    // La agenda es personal: el filtro por user_id se hace acá, no sólo con
+    // RLS (que desde la spec 08 deja al dueño ver los turnos del equipo).
+    expect(appointmentsBuilder.eq).toHaveBeenCalledWith("user_id", PERFIL.id);
     expect(appointmentsBuilder.in).toHaveBeenCalledWith("status", [
       "scheduled",
       "completed",

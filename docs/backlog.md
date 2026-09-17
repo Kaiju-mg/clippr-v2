@@ -81,9 +81,16 @@ Cubre el control de stock básico y los gastos diarios (ej. comprar café).
 
 Ver `docs/arquitectura.md` sección "Productos y Movimientos de Caja".
 
-### 8. Estadísticas, Niveles y Rachas (Gamificación)
+### 8. Estadísticas, Niveles y Rachas (Gamificación) (implementado)
 Cierre del ciclo de retención y análisis de negocio.
 - **Modelo:** Actualización de `streak_count` y `level` en `User`.
 - **Server Action:** Calcular ingresos mensuales/semanales (Dueño). Evaluar racha diaria al cerrar primera caja (Barbero).
 - **UI:** Dashboard Dueño (Gráficos simples de ingresos, cortes totales). Dashboard Barbero (Tu nivel actual, cortes del día, barra de progreso para subir a "Pro").
 - **Test:** Completar un turno/caja en días consecutivos y verificar que la racha sube.
+
+Dos reglas que la spec dejaba abiertas se definieron con el usuario
+(2026-09-17): el nivel es una **liga de 30 días móviles** (puede bajar) y la
+racha tolera **un día de gracia**. Ver la sección 6 de
+`docs/specs/08-estadisticas-niveles-rachas.md` y `docs/decisiones.md`.
+
+Ver `docs/arquitectura.md` sección "Estadísticas, Niveles y Rachas".

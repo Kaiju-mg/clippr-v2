@@ -872,3 +872,86 @@ barbero nunca la cambia, esa es su contraseña para siempre. Si el dueño
 cierra el panel sin anotarla, no hay forma de verla ni de regenerarla desde
 la app (ver `docs/deuda-tecnica.md`). Los barberos creados antes de este
 cambio siguen con `Clippr2026!`.
+
+## 2026-09-17 — Niveles como "ligas" de 30 días móviles, no como acumulado histórico
+Elegido: el `level` del barbero se recalcula al cerrar la caja contando sus
+turnos `completed` de los últimos 30 días (ventana móvil): junior < 40, pro
+40–90, senior 91–150, élite 151+. Puede **bajar**. Umbrales y cálculo en
+`src/lib/levels.ts` (`levelForCuts`, `levelProgress`), fuera del Server
+Action.
+Descartado: (1) umbrales sobre cortes acumulados de toda la historia
+(junior 0 / pro 50 / senior 200 / elite 500), la propuesta inicial; (2)
+umbrales sobre `streak_count`; (3) combinar cortes Y racha.
+Por qué: la spec 08 solo daba un ejemplo ("ej. a Pro") sin umbrales, así que
+se le consultó al usuario. Eligió el modelo de ligas (estilo rangos de un
+juego competitivo): con un acumulado histórico el nivel se gana una vez y el
+juego se termina; con una ventana móvil el barbero tiene que sostener el
+ritmo para mantener la categoría, que es justo el objetivo de retención de
+la gamificación. El acumulado además castiga al barbero nuevo para siempre.
+Costo: un barbero que se va de vacaciones vuelve con el nivel más bajo, y
+eso puede leerse como un castigo más que como un incentivo — no hay ninguna
+pantalla que explique por qué bajó, más allá de la línea "tu nivel se
+calcula sobre los últimos 30 días" en `/estadisticas`. La ventana se
+recalcula sólo al cerrar la caja, así que el nivel guardado puede quedar
+desactualizado si el barbero deja de cerrar cajas (ver
+`docs/deuda-tecnica.md`).
+
+## 2026-09-17 — Racha con un día de gracia, en vez de modelar días hábiles
+Elegido: al cerrar una caja con al menos un ingreso, se compara el día del
+negocio de su `start_time` contra la última jornada válida anterior (otra
+caja cerrada con ingresos). Diferencia de 1 o 2 días → racha +1; 0 días
+(segunda caja del mismo día) → sin cambio; 3 días o más → vuelve a 1. Lógica
+pura en `src/lib/streaks.ts` (`nextStreakCount`), llamada desde
+`updateStreakAndLevel` en `cash.actions.ts`.
+Descartado: (1) día calendario anterior estricto, sin tolerancia; (2)
+hardcodear el domingo como día no laborable para todas las barberías.
+Por qué: la spec 08 hablaba de "más de 1 día hábil sin caja", pero el
+proyecto no tiene noción de días hábiles ni de horarios por barbería, así
+que se le consultó al usuario y eligió la tolerancia de 48 hs. Una barbería
+cierra los domingos y otra los lunes: el día de gracia cubre las dos sin
+agregar ninguna configuración, y además le da al barbero un comodín para el
+día que falta por un trámite, que es lo que evita que abandone la racha (y
+la app) después de una falta.
+Costo: "racha de 10" ya no significa 10 días seguidos — pueden ser 10
+cierres repartidos en hasta 20 días. El texto de `/inicio` y
+`/estadisticas` dice "racha de N días" sin esa aclaración.
+
+## 2026-09-17 — RLS: el dueño ve las cajas, turnos y movimientos de su equipo
+Elegido: migración `20260917000000_owner_stats_visibility.sql` con la función
+`public.current_user_role()` (`SECURITY DEFINER`, mismo patrón que
+`current_barbershop_id()` / `current_user_id()`) y las tres policies de
+`select` reescritas como `barbershop_id = current_barbershop_id() and
+(user_id = current_user_id() or current_user_role() = 'owner')`. En
+`transactions` el criterio va adentro del `EXISTS` contra `cash_sessions`.
+`insert` y `update` no se tocaron: el dueño lee, no escribe sobre lo ajeno.
+Descartado: la fórmula literal de la spec (`user_id = current_user_id() OR
+(barbershop_id = current_barbershop_id() AND role = 'owner')`) — es
+lógicamente equivalente, pero deja el chequeo de tenant sólo en una de las
+dos ramas. Poniéndolo como primer factor común, la barrera multi-tenant
+(regla 2 de CLAUDE.md) se lee de un vistazo y no depende del rol.
+Por qué: era el paso que las specs 05 y 06 ya habían dejado anotado ("queda
+para cuando se implemente la spec 08"). Sin esto, el dashboard del dueño no
+puede ver un solo dato de su equipo.
+Costo: **`/agenda` tuvo que empezar a filtrar `user_id` a mano**
+(`getAgendaAction`), porque hasta ahora se apoyaba en que RLS le devolviera
+sólo los turnos propios — sin ese filtro, el dueño vería la agenda de toda
+la barbería mezclada en su día. Es un filtro de pantalla, no de tenant (eso
+lo sigue haciendo RLS), pero es exactamente el tipo de query que hay que
+revisar cada vez que una policy se afloja: cualquier consulta futura que
+asuma "RLS ya me acota a lo mío" sobre `cash_sessions`, `appointments` o
+`transactions` está mal. También: el dueño ahora puede leer el saldo de la
+caja de un barbero pasando su id a `getCashBalanceAction`.
+
+## 2026-09-17 — La gamificación no puede tumbar el cierre de caja
+Elegido: `updateStreakAndLevel` corre **después** del `update` que cierra la
+caja, no devuelve error y no se propaga: si falla, se loguea y
+`closeCashSessionAction` devuelve igual `{ success: true }`.
+Descartado: calcular racha y nivel antes del cierre, o abortar el cierre si
+la gamificación falla.
+Por qué: el cierre de caja es el registro contable del día; la racha es un
+número motivacional. Hacerle creer al barbero que su cierre no se guardó
+(cuando sí se guardó) por un fallo en una consulta de estadísticas es mucho
+peor que perder un punto de racha.
+Costo: una racha puede quedar sin sumar en silencio y no hay forma de
+recalcularla después (no hay job de reconciliación) — ver
+`docs/deuda-tecnica.md`.

@@ -96,3 +96,46 @@ export function businessDayRangeUtc(dateISO: string): {
     end: businessDateTimeToUtc(shiftDateISO(dateISO, 1), "00:00").toISOString(),
   };
 }
+
+/**
+ * Días calendario entre dos fechas (`b - a`), sin pasar por ninguna zona
+ * horaria: las dos son días del negocio ya resueltos, no instantes. Se usa
+ * para la racha (¿la última caja fue ayer, anteayer o hace una semana?).
+ */
+export function daysBetweenDateISO(from: string, to: string): number {
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [ty, tm, td] = to.split("-").map(Number);
+  const start = Date.UTC(fy, fm - 1, fd);
+  const end = Date.UTC(ty, tm - 1, td);
+  return Math.round((end - start) / 86_400_000);
+}
+
+/**
+ * Lunes de la semana a la que pertenece `dateISO`. La semana del negocio
+ * arranca el lunes: el domingo es el día de menos movimiento en una
+ * barbería, así que cortar ahí parte el fin de semana al medio.
+ */
+export function businessWeekStart(dateISO: string): string {
+  const [year, month, day] = dateISO.split("-").map(Number);
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  // getUTCDay(): 0 = domingo. El domingo cierra la semana que empezó el
+  // lunes anterior, no abre una nueva.
+  const backToMonday = weekday === 0 ? 6 : weekday - 1;
+  return shiftDateISO(dateISO, -backToMonday);
+}
+
+/** Primer día del mes al que pertenece `dateISO`. */
+export function businessMonthStart(dateISO: string): string {
+  return `${dateISO.slice(0, 7)}-01`;
+}
+
+/** Rango [inicio del primer día, inicio del día siguiente al último) en UTC. */
+export function businessRangeUtc(
+  startDateISO: string,
+  endDateISO: string,
+): { start: string; end: string } {
+  return {
+    start: businessDayRangeUtc(startDateISO).start,
+    end: businessDayRangeUtc(endDateISO).end,
+  };
+}

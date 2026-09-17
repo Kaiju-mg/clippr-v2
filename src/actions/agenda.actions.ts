@@ -48,9 +48,33 @@ const ESTADOS_AGENDA: AppointmentStatus[] = [
 ];
 
 /**
+ * id (public.users) del usuario autenticado. Desde la spec 08, RLS deja al
+ * dueño leer los turnos de todo su equipo (para las estadísticas), así que
+ * la agenda tiene que filtrar el suyo a mano: `/agenda` es la agenda
+ * personal, no la de la barbería. No es un filtro de tenant (eso lo sigue
+ * haciendo RLS, regla 2 de CLAUDE.md), es un filtro de pantalla.
+ */
+async function getCurrentUserId(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<string | null> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return null;
+
+  const { data } = await supabase
+    .from("users")
+    .select("id")
+    .eq("auth_id", user.id)
+    .maybeSingle<{ id: string }>();
+
+  return data?.id ?? null;
+}
+
+/**
  * Turnos del barbero actual para el día pedido (día de Paraguay, no de UTC),
- * ordenados por hora de inicio. RLS (`appointments_select_own`) ya acota a
- * los propios y al tenant — acá solo se filtra por fecha y estado.
+ * ordenados por hora de inicio.
  */
 export async function getAgendaAction(
   dateISO: string,
@@ -61,10 +85,16 @@ export async function getAgendaAction(
 
   const range = businessDayRangeUtc(dateISO);
   const supabase = await createClient();
+  const userId = await getCurrentUserId(supabase);
+
+  if (!userId) {
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
 
   const { data, error } = await supabase
     .from("appointments")
     .select("*")
+    .eq("user_id", userId)
     .in("status", ESTADOS_AGENDA)
     .gte("start_time", range.start)
     .lt("start_time", range.end)
