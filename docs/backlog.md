@@ -72,12 +72,14 @@ estabilización (2026-09-16): fechas en `America/Asuncion`, duración de
 turnos cobrados antes de hora, y saldo real de caja en pantalla y al
 cerrar — ver `docs/decisiones.md`.
 
-### 7. Productos y Movimientos de Caja (Ingresos/Egresos extras)
+### 7. Productos y Movimientos de Caja (Ingresos/Egresos extras) (implementado)
 Cubre el control de stock básico y los gastos diarios (ej. comprar café).
 - **Modelo:** `Product`, `Transaction`.
 - **Server Action:** CRUD productos. Registrar `Transaction` manual y actualizar saldo de `CashSession`. Reducir stock al vender.
 - **UI:** Sección de productos. En la pantalla `/caja`, botones para "Añadir Gasto" o "Vender Producto" (sin turno).
 - **Test:** Registrar un gasto manual y comprobar que el `final_balance` en memoria y DB descuenta el monto correctamente. (El cálculo inicial + ingresos − egresos ya existe desde el 2026-09-16 en `computeBalance`, `cash.actions.ts` — los egresos solo tienen que insertarse como `type: "expense"`.)
+
+Ver `docs/arquitectura.md` sección "Productos y Movimientos de Caja".
 
 ### 8. Estadísticas, Niveles y Rachas (Gamificación)
 Cierre del ciclo de retención y análisis de negocio.

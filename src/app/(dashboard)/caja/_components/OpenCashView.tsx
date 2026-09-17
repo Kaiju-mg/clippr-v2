@@ -1,16 +1,15 @@
 "use client";
 
-import { useState, type ChangeEvent, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import { useAmountInput } from "@/components/forms/useAmountInput";
 import { openCashSessionAction } from "@/actions/cash.actions";
 
 const FONT_SIZE_MAX_REM = 4.5;
 const FONT_SIZE_MIN_REM = 1.75;
 const CARACTERES_ANTES_DE_ACHICAR = 6;
 const REM_POR_CARACTER_EXTRA = 0.3;
-
-const FORMATO_MILES = new Intl.NumberFormat("es-PY");
 
 /**
  * Tamaño de fuente del monto según la cantidad de caracteres visibles
@@ -27,18 +26,6 @@ function calcularTamanioFuente(cantidadCaracteres: number): string {
   return `${Math.max(FONT_SIZE_MIN_REM, rem)}rem`;
 }
 
-function soloDigitos(value: string): string {
-  return value.replace(/\D/g, "");
-}
-
-function quitarCerosALaIzquierda(digitos: string): string {
-  return digitos.replace(/^0+(?=\d)/, "");
-}
-
-function formatearConPuntosDeMiles(digitos: string): string {
-  return digitos ? FORMATO_MILES.format(Number(digitos)) : "";
-}
-
 /**
  * Pantalla de apertura de caja, estilo terminal de punto de venta: el
  * input del saldo inicial es el foco absoluto de la pantalla (spec 04,
@@ -47,54 +34,17 @@ function formatearConPuntosDeMiles(digitos: string): string {
  */
 export function OpenCashView() {
   const router = useRouter();
-  // Solo dígitos, sin puntos: lo que se manda al Server Action. Los puntos
-  // de miles se agregan al mostrarlo (formatearConPuntosDeMiles), nunca se
-  // guardan en el estado.
-  const [amount, setAmount] = useState("");
+  // Separador de miles en vivo y manejo del cursor: ver useAmountInput.
+  const amount = useAmountInput();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-
-  const amountFormateado = formatearConPuntosDeMiles(amount);
-
-  function handleAmountChange(event: ChangeEvent<HTMLInputElement>) {
-    const input = event.target;
-    const cursorPos = input.selectionStart ?? input.value.length;
-    const digitosAntesDelCursor = soloDigitos(
-      input.value.slice(0, cursorPos),
-    ).length;
-
-    const nuevosDigitos = quitarCerosALaIzquierda(soloDigitos(input.value));
-    setAmount(nuevosDigitos);
-
-    // Los puntos de miles pueden aparecer/desaparecer con cada tecla y
-    // correr el cursor (React re-renderiza el value ya formateado) — lo
-    // recalculamos contando cuántos dígitos había antes del cursor y
-    // ubicándolo después de esa misma cantidad de dígitos en el texto ya
-    // formateado, en vez de dejar que salte al final en cada tecla.
-    requestAnimationFrame(() => {
-      const formateado = formatearConPuntosDeMiles(nuevosDigitos);
-      let nextCursor = 0;
-      if (digitosAntesDelCursor > 0) {
-        let digitosVistos = 0;
-        nextCursor = formateado.length;
-        for (let i = 0; i < formateado.length; i++) {
-          if (/\d/.test(formateado[i])) digitosVistos++;
-          if (digitosVistos === digitosAntesDelCursor) {
-            nextCursor = i + 1;
-            break;
-          }
-        }
-      }
-      input.setSelectionRange(nextCursor, nextCursor);
-    });
-  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     setIsLoading(true);
 
-    const result = await openCashSessionAction(Number(amount));
+    const result = await openCashSessionAction(Number(amount.digits));
 
     setIsLoading(false);
 
@@ -124,14 +74,14 @@ export function OpenCashView() {
             inputMode="numeric"
             autoFocus
             required
-            value={amountFormateado}
-            onChange={handleAmountChange}
+            value={amount.formatted}
+            onChange={amount.handleChange}
             placeholder="0"
             aria-label="Saldo inicial"
             className="w-full min-w-0 border-none bg-transparent text-center font-display font-bold tabular-nums text-foreground outline-none"
             style={{
               fontSize: calcularTamanioFuente(
-                Math.max(amountFormateado.length, 1),
+                Math.max(amount.formatted.length, 1),
               ),
             }}
           />

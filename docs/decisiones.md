@@ -779,3 +779,69 @@ tiene que guardar ese mismo número (regla 1 de CLAUDE.md: el cálculo va en
 el servidor).
 Costo: la suma se hace en JS sobre las filas del día, no con un `SUM` en
 SQL. Alcanza para el volumen de una caja diaria.
+## 2026-09-16 — Productos: solo el dueño edita el catálogo; RLS de `update` abierta a toda la barbería
+Elegido: `createProductAction`, `updateProductAction` y
+`toggleProductStatusAction` leen el rol del usuario y rechazan a quien no
+sea `owner` (mismo chequeo que `team.actions.ts`). Las policies de
+`products` quedan como pedía la spec 07: `select`/`insert`/`update` con
+`barbershop_id = current_barbershop_id()`, sin policy de `delete` (borrado
+lógico con `is_active`, igual que `services`). En `/productos` los
+barberos ven la lista sin switch ni botón de editar.
+Descartado: que cualquier integrante edite el catálogo (criterio actual de
+`services`), y acotar el `UPDATE` de RLS al dueño.
+Por qué: la spec 07 dejaba la regla abierta ("sugerido: ... igual que en
+equipo"); se le consultó al usuario y eligió solo el dueño. El `UPDATE` de
+RLS no se puede cerrar al dueño porque cualquier barbero descuenta stock al
+vender (`sellProductAction`).
+Costo: desde la consola del navegador, un barbero puede cambiar el precio o
+el stock de un producto con su propia sesión — RLS no lo frena, solo el
+Server Action. Si eso llega a importar, hace falta una RPC de venta
+`SECURITY DEFINER` (que también resolvería la atomicidad, ver
+`docs/deuda-tecnica.md`) y cerrar el `UPDATE` al dueño.
+
+## 2026-09-16 — `transactions_insert_own` exige caja abierta (`status = 'open'`)
+Elegido: migración `20260916030000_transactions_insert_open_session_only.sql`
+recrea `transactions_insert_own` sumando `cs.status = 'open'` al `EXISTS`.
+Además, `registerTransactionAction` y `sellProductAction` buscan en el
+servidor la caja abierta del usuario (el cliente nunca manda
+`cashSessionId`) y cortan antes si no hay.
+Descartado: dejar el chequeo solo en los Server Actions, como hacen
+`completeWalkinAction` y `completeScheduledAppointmentAction`.
+Por qué: la spec 07 (sección 5.3) daba por hecho que RLS ya bloqueaba
+movimientos en una caja cerrada, pero la policy de la spec 05 solo
+verificaba que la caja fuera propia. Se le consultó al usuario y eligió que
+la base sea la barrera real, además del Server Action.
+Costo: ninguna acción puede insertar una transacción en una caja cerrada,
+ni siquiera para corregir un cierre (hoy ningún flujo lo necesita). Si se
+agrega un "ajuste posterior al cierre", va a necesitar otra policy o una
+RPC.
+
+## 2026-09-16 — `sellProductAction`: descuento de stock condicionado al stock leído
+Elegido: el `update` de stock filtra `.eq("stock", stockLeído)`. Si otro
+barbero vendió entre la lectura y la escritura, no se actualiza ninguna
+fila y se devuelve "El stock cambió mientras vendías. Intentá de nuevo.".
+La tabla además tiene `check (stock >= 0)`. El monto de la venta sale de
+`products.price × cantidad` leído en el servidor. Vender un producto
+inactivo se rechaza.
+Descartado: `update stock = stock - n` sin condición (con supabase-js no
+se puede expresar sin RPC) y leer-y-escribir sin condición (dos ventas
+simultáneas pisarían el stock).
+Por qué: una barbería con varios barberos vende del mismo stock; sin la
+condición se pierden descuentos en silencio. La spec 07 pedía abortar si
+la cantidad supera el stock, y esto cubre también el caso concurrente.
+Costo: con mucho tráfico sobre un mismo producto el barbero puede tener
+que reintentar. Sigue sin haber atomicidad entre el stock y la transacción
+(ver `docs/deuda-tecnica.md`).
+
+## 2026-09-16 — Lógica del monto con separador de miles extraída a `useAmountInput`
+Elegido: el manejo del input de monto de `OpenCashView` (solo dígitos en el
+estado, puntos de miles al mostrar, reposición del cursor) pasó a
+`src/components/forms/useAmountInput.ts`. Lo usan `OpenCashView` y
+`TransactionInlineForm`.
+Descartado: copiar la lógica en el formulario nuevo.
+Por qué: la spec 07 pide reutilizar el comportamiento de `OpenCashView`, y
+es la lógica de UI más propensa a romperse (ver `docs/deuda-tecnica.md`):
+mejor un solo lugar para arreglarla.
+Costo: `OpenCashView` se tocó sin tests de UI que lo cubran; se revisó a
+mano que el comportamiento sea el mismo y después se probó en el navegador
+(abrir caja con 50.000 mostró "50.000"), pero sigue sin test automatizado.

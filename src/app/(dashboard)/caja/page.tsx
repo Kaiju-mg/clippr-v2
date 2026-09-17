@@ -2,8 +2,11 @@ import {
   getCashBalanceAction,
   getCurrentCashSessionAction,
 } from "@/actions/cash.actions";
+import { getProductsAction } from "@/actions/product.actions";
 import { OpenCashView } from "./_components/OpenCashView";
 import { CloseCashButton } from "./_components/CloseCashButton";
+import { TransactionInlineForm } from "./_components/TransactionInlineForm";
+import { SellProductForm } from "./_components/SellProductForm";
 import { BUSINESS_TIMEZONE } from "@/lib/dates";
 import { formatGuaranies } from "@/lib/utils";
 
@@ -20,11 +23,16 @@ export default async function CajaPage() {
 
   const session = result.data;
 
+  // Sin caja abierta no se renderizan movimientos ni ventas; igual el
+  // servidor los rechaza por su cuenta (spec 07, sección 5.3).
   if (!session) {
     return <OpenCashView />;
   }
 
-  const balanceResult = await getCashBalanceAction(session.id);
+  const [balanceResult, productsResult] = await Promise.all([
+    getCashBalanceAction(session.id),
+    getProductsAction(),
+  ]);
 
   if (!balanceResult.success) {
     return (
@@ -35,6 +43,11 @@ export default async function CajaPage() {
   }
 
   const balance = balanceResult.data;
+  // Si falla la lectura del catálogo, la caja sigue usable: solo no se
+  // ofrece la venta de productos.
+  const activeProducts = productsResult.success
+    ? productsResult.data.filter((product) => product.is_active)
+    : [];
 
   return (
     <div className="flex flex-col gap-6 p-4">
@@ -54,7 +67,7 @@ export default async function CajaPage() {
             </dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-muted">Cobros</dt>
+            <dt className="text-muted">Ingresos</dt>
             <dd className="tabular-nums">+ {formatGuaranies(balance.income)}</dd>
           </div>
           {balance.expense > 0 && (
@@ -78,6 +91,14 @@ export default async function CajaPage() {
       </div>
 
       <CloseCashButton sessionId={session.id} />
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-medium text-muted">Movimientos</h2>
+        <TransactionInlineForm />
+        {activeProducts.length > 0 && (
+          <SellProductForm products={activeProducts} />
+        )}
+      </section>
     </div>
   );
 }

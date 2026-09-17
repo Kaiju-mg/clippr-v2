@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import type { CashSession } from "@/types";
+import type { CashSession, Transaction, TransactionType } from "@/types";
 
 export type CashActionResult<T> =
   | { success: true; data: T }
@@ -14,9 +14,19 @@ const MENSAJE_NO_ENCONTRADA = "Caja no encontrada o ya cerrada.";
 const MENSAJE_SALDO_INVALIDO =
   "El saldo inicial debe ser un número mayor o igual a cero.";
 
-// Código SQLSTATE de Postgres para violación de restricción única (el
-// índice parcial one_open_session_per_user de la migración).
+const MENSAJE_CAJA_CERRADA =
+  "Tenés que abrir tu caja antes de registrar movimientos.";
+const MENSAJE_PRODUCTO_INVALIDO = "Producto no encontrado o inactivo.";
+const MENSAJE_STOCK_CAMBIO =
+  "El stock cambió mientras vendías. Intentá de nuevo.";
+const MENSAJE_VENTA_SIN_CAJA =
+  "Se descontó el stock, pero la venta no se pudo reflejar en la caja. Avisá para revisar el desfase.";
+
+// Códigos SQLSTATE de Postgres: violación de restricción única (el índice
+// parcial one_open_session_per_user de la migración) y de un `check` (ej.
+// products.stock >= 0).
 const UNIQUE_VIOLATION = "23505";
+const CHECK_VIOLATION = "23514";
 
 function validateInitialBalance(value: number): string | null {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
@@ -268,4 +278,226 @@ export async function closeCashSessionAction(
 
   revalidatePath("/caja");
   return { success: true, data: updated as CashSession };
+}
+
+/**
+ * id de la caja abierta del usuario autenticado, o null si no tiene. Los
+ * movimientos manuales y las ventas se asocian siempre a esta caja, resuelta
+ * en el servidor: el cliente nunca elige en qué caja se carga la plata.
+ * Si igual se llegara a insertar sobre una caja cerrada, RLS
+ * (`transactions_insert_own`, que exige `status = 'open'`) lo rechaza.
+ */
+async function getOpenCashSessionId(
+  supabase: SupabaseServerClient,
+): Promise<{ id: string | null; error: boolean }> {
+  const userId = await getCurrentUserId(supabase);
+  if (!userId) return { id: null, error: true };
+
+  const { data, error } = await supabase
+    .from("cash_sessions")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("status", "open")
+    .maybeSingle<{ id: string }>();
+
+  if (error) {
+    console.error("getOpenCashSessionId:", error.message);
+    return { id: null, error: true };
+  }
+
+  return { id: data?.id ?? null, error: false };
+}
+
+export interface ManualTransactionPayload {
+  type: TransactionType;
+  amount: number;
+  description: string;
+}
+
+function validateManualTransaction(
+  payload: ManualTransactionPayload,
+): string | null {
+  if (payload.type !== "income" && payload.type !== "expense") {
+    return "El tipo de movimiento no es válido.";
+  }
+
+  if (
+    typeof payload.amount !== "number" ||
+    !Number.isInteger(payload.amount) ||
+    payload.amount <= 0
+  ) {
+    return "El monto debe ser un número entero mayor a cero.";
+  }
+
+  if (
+    typeof payload.description !== "string" ||
+    payload.description.trim().length === 0
+  ) {
+    return "Contá brevemente de qué es el movimiento.";
+  }
+
+  return null;
+}
+
+/**
+ * Registra un ingreso o egreso manual (ej. comprar café, una propina) en la
+ * caja abierta del usuario. Entra solo en el saldo porque `computeBalance`
+ * ya suma todas las `transactions` de la caja.
+ */
+export async function registerTransactionAction(
+  payload: ManualTransactionPayload,
+): Promise<CashActionResult<Transaction>> {
+  const validationError = validateManualTransaction(payload);
+  if (validationError) {
+    return { success: false, error: validationError };
+  }
+
+  const supabase = await createClient();
+  const session = await getOpenCashSessionId(supabase);
+
+  if (session.error) {
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
+  if (!session.id) {
+    return { success: false, error: MENSAJE_CAJA_CERRADA };
+  }
+
+  const { data: created, error } = await supabase
+    .from("transactions")
+    .insert({
+      cash_session_id: session.id,
+      type: payload.type,
+      amount: payload.amount,
+      description: payload.description.trim(),
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("registerTransactionAction:", error.message);
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
+  revalidatePath("/caja");
+  return { success: true, data: created as Transaction };
+}
+
+export interface SellProductPayload {
+  productId: string;
+  quantity: number;
+}
+
+/**
+ * Vende un producto: descuenta stock e inserta el ingreso en la caja
+ * abierta. El monto sale de `products.price` leído acá (nunca del payload),
+ * mismo criterio que completeWalkinAction.
+ *
+ * El descuento de stock es un update condicionado al stock recién leído
+ * (`.eq("stock", ...)`): si otro barbero vendió en el medio, no matchea
+ * ninguna fila y se pide reintentar, en vez de pisar su venta. El
+ * `check (stock >= 0)` de la tabla es la última barrera.
+ *
+ * *(Deuda técnica transaccional, spec 07 sección 5.2)*: sin RPC atómico,
+ * son dos queries separadas. Si el insert de la transacción falla después
+ * de descontar el stock, se devuelve un error explícito para revisar el
+ * desfase a mano. Ver docs/deuda-tecnica.md.
+ */
+export async function sellProductAction(
+  payload: SellProductPayload,
+): Promise<CashActionResult<Transaction>> {
+  if (!Number.isInteger(payload.quantity) || payload.quantity <= 0) {
+    return {
+      success: false,
+      error: "La cantidad debe ser un número entero mayor a cero.",
+    };
+  }
+
+  const supabase = await createClient();
+  const session = await getOpenCashSessionId(supabase);
+
+  if (session.error) {
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
+  if (!session.id) {
+    return { success: false, error: MENSAJE_CAJA_CERRADA };
+  }
+
+  const { data: product, error: productError } = await supabase
+    .from("products")
+    .select("id, name, price, stock, is_active")
+    .eq("id", payload.productId)
+    .maybeSingle<{
+      id: string;
+      name: string;
+      price: number;
+      stock: number;
+      is_active: boolean;
+    }>();
+
+  if (productError) {
+    console.error("sellProductAction (products):", productError.message);
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
+  if (!product || !product.is_active) {
+    return { success: false, error: MENSAJE_PRODUCTO_INVALIDO };
+  }
+
+  if (payload.quantity > product.stock) {
+    return {
+      success: false,
+      error:
+        product.stock === 0
+          ? `No queda stock de ${product.name}.`
+          : `No hay stock suficiente de ${product.name} (quedan ${product.stock}).`,
+    };
+  }
+
+  const { data: updated, error: stockError } = await supabase
+    .from("products")
+    .update({ stock: product.stock - payload.quantity })
+    .eq("id", product.id)
+    .eq("stock", product.stock)
+    .select("id")
+    .maybeSingle();
+
+  if (stockError) {
+    if (stockError.code === CHECK_VIOLATION) {
+      return { success: false, error: MENSAJE_STOCK_CAMBIO };
+    }
+    console.error("sellProductAction (stock):", stockError.message);
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
+  if (!updated) {
+    return { success: false, error: MENSAJE_STOCK_CAMBIO };
+  }
+
+  const { data: created, error: transactionError } = await supabase
+    .from("transactions")
+    .insert({
+      cash_session_id: session.id,
+      type: "income",
+      amount: product.price * payload.quantity,
+      description:
+        payload.quantity > 1
+          ? `Venta: ${product.name} x${payload.quantity}`
+          : `Venta: ${product.name}`,
+    })
+    .select()
+    .single();
+
+  if (transactionError) {
+    console.error(
+      "sellProductAction (transactions):",
+      transactionError.message,
+    );
+    return { success: false, error: MENSAJE_VENTA_SIN_CAJA };
+  }
+
+  revalidatePath("/caja");
+  revalidatePath("/productos");
+  return { success: true, data: created as Transaction };
 }

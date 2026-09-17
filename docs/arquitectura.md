@@ -341,6 +341,52 @@ prueba encontró dos bugs (día cortado en UTC y `end_time` anterior a
   del servidor. Sin caja abierta, el botón "Cobrar" se deshabilita y
   aparece el mismo aviso con link a `/caja` que en `FinishWalkinForm`.
 
+### Productos y Movimientos de Caja (implementado)
+
+Séptima rebanada vertical (`docs/specs/07-productos-y-movimientos-caja.md`).
+Migraciones `20260916020000_create_products_table.sql` y
+`20260916030000_transactions_insert_open_session_only.sql` aplicadas
+contra el proyecto real (`supabase db push`). Probado con Vitest (Supabase
+mockeado) **y** de punta a punta en el navegador con una cuenta de dueño
+(2026-09-16): crear/editar/desactivar producto, caja cerrada sin
+movimientos, egreso e ingreso manual, venta bloqueada por falta de stock,
+venta de 2 y de 1 unidad hasta "Sin stock", con el resultado verificado
+directo en la base. Las RLS nuevas se probaron con scripts descartables
+(caja cerrada, `stock >= 0`, aislamiento entre barberías). Con una cuenta
+de barbero: `/productos` sin controles de edición, las tres acciones del
+catálogo llamadas directo (sin la UI) devuelven "Acceso denegado" sin
+cambiar nada, venta y movimiento bloqueados en el servidor sin caja
+abierta, venta desde su propia caja con el stock compartido, y sin poder
+leer ni cargar movimientos en la caja del dueño.
+
+- **Tabla `products`:** `barbershop_id` con `default
+  current_barbershop_id()`, `price integer > 0`, `stock integer >= 0`,
+  `low_stock_threshold` nullable, `is_active` (borrado lógico). RLS de
+  `select`/`insert`/`update` a toda la barbería, sin `delete`.
+- **`transactions_insert_own` exige `status = 'open'`** en la caja
+  referenciada: la base rechaza movimientos en una caja cerrada.
+- **`src/actions/product.actions.ts`:** `getProductsAction` (cualquier
+  integrante, activos primero), `createProductAction`,
+  `updateProductAction` y `toggleProductStatusAction` (solo el dueño, se
+  valida el rol en la acción).
+- **`src/actions/cash.actions.ts`:** `registerTransactionAction` (ingreso o
+  egreso manual con descripción obligatoria) y `sellProductAction`. Las dos
+  resuelven la caja abierta del usuario en el servidor — el cliente no
+  manda `cashSessionId`. La venta lee precio y stock de la base, aborta si
+  la cantidad supera el stock, descuenta con un `update` condicionado al
+  stock leído (dos ventas simultáneas no se pisan) e inserta el ingreso
+  `precio × cantidad`. Sin RPC atómico: ver `docs/deuda-tecnica.md`.
+  `computeBalance` no cambió: ya sumaba todas las transacciones.
+- **UI:** `(dashboard)/productos/` (`ProductList` con switch optimista y
+  `ProductInlineForm` in-line, mismos patrones que `/servicios`; los
+  barberos ven la lista sin controles). Link en `/mas`. En `/caja`, debajo
+  del cierre, la sección "Movimientos" con dos acordeones in-line:
+  `TransactionInlineForm` (Egreso/Ingreso, monto con separador de miles vía
+  `src/components/forms/useAmountInput.ts`, compartido con `OpenCashView`)
+  y `SellProductForm` (solo si hay productos activos; los sin stock
+  aparecen deshabilitados). El desglose del saldo dice "Ingresos" en vez de
+  "Cobros", porque ahora incluye ventas e ingresos manuales.
+
 ## Modelo de Datos
 
 Entidades principales enfocadas en resolver el modelo Multi-Tenant, los turnos y la gestión individual de caja:
@@ -350,7 +396,7 @@ Entidades principales enfocadas en resolver el modelo Multi-Tenant, los turnos y
 - **User (Usuario - Dueño/Barbero/Independiente):**
   - `id`, `auth_id` (vinculado a Supabase Auth), `barbershop_id`, `role` (owner, barber, independent), `name`, `level` (junior, pro, senior, elite), `commission_pct`, `streak_count`
 - **Product (Producto / Stock):**
-  - `id`, `barbershop_id`, `name`, `price`, `stock`, `low_stock_threshold`
+  - `id`, `barbershop_id`, `name`, `price` (entero, guaraníes), `stock` (>= 0), `low_stock_threshold` (nullable), `is_active` (borrado lógico)
 - **Service (Servicio ofrecido):**
   - `id`, `barbershop_id`, `name`, `price` (entero, guaraníes sin
     decimales), `duration_minutes`, `is_active` (activar/desactivar
@@ -398,18 +444,19 @@ Estructura basada en Next.js App Router, separando claramente la lógica de nego
       /agenda         # Turnos programados: page.tsx + _components/ (implementado, spec 06)
       /servicios      # Catálogo de servicios (implementado, spec 02)
       /equipo         # Gestión de equipo/barberos (implementado, spec 03)
-      /caja           # Apertura/cierre de CashSessions (implementado, spec 04)
-      /mas            # Catch-all: Servicios, Equipo, Cerrar sesión (implementado, spec 05.5)
+      /caja           # Apertura/cierre de CashSessions, movimientos y ventas (implementado, specs 04 y 07)
+      /productos      # Catálogo de productos y stock (implementado, spec 07)
+      /mas            # Catch-all: Servicios, Productos, Equipo, Cerrar sesión (implementado, spec 05.5)
       /estadisticas   # Reportes e insights (vacío, .gitkeep — fuera de la barra por ahora)
   /components
     /ui               # Componentes base reutilizables (Button, Input, Switch, BottomNav)
-    /forms            # Formularios de la aplicación
+    /forms            # useAmountInput.ts (monto con separador de miles, spec 07)
     /timers           # TimerList.tsx, TimerCard.tsx, FinishWalkinForm.tsx (implementado, spec 05)
   /lib
     /supabase         # Clientes de Supabase: client.ts (browser), server.ts (servidor), admin.ts (Service Role Key, solo servidor)
     utils.ts          # Funciones utilitarias generales (incluye formatGuaranies)
     dates.ts          # Fechas del negocio en America/Asuncion (+ dates.test.ts)
-  /actions            # Server Actions — auth, service, team, cash, walkin, agenda (.actions.ts, implementados)
+  /actions            # Server Actions — auth, service, product, team, cash, walkin, agenda (.actions.ts, implementados)
   /store              # Estado global del frontend (Zustand) — timerStore.ts (implementado, spec 05)
   /types              # Definiciones de tipos e interfaces TypeScript
 
@@ -419,11 +466,12 @@ Estructura basada en Next.js App Router, separando claramente la lógica de nego
 
 `(auth)`, `(dashboard)/layout.tsx`, `(dashboard)/inicio`,
 `(dashboard)/agenda`, `(dashboard)/servicios`, `(dashboard)/equipo`,
-`(dashboard)/caja` y `(dashboard)/mas` ya tienen lógica real — ver "Auth y
-Multi-Tenant", "Flujo de Walk-ins y Temporizador", "Agenda de Turnos
-Programados", "Navegación Minimalista", "Sistema de Diseño", "Catálogo de
+`(dashboard)/caja`, `(dashboard)/productos` y `(dashboard)/mas` ya tienen
+lógica real — ver "Auth y Multi-Tenant", "Flujo de Walk-ins y
+Temporizador", "Agenda de Turnos Programados", "Productos y Movimientos de
+Caja", "Navegación Minimalista", "Sistema de Diseño", "Catálogo de
 Servicios", "Gestión de Equipo" y "Sesión de Caja Diaria" más arriba.
-`estadisticas/` y `forms/` siguen vacíos (`.gitkeep`): son el esqueleto
+`estadisticas/` sigue vacío (`.gitkeep`): es el esqueleto
 para las próximas specs.
 
 ## Las 3 Decisiones Técnicas Más Riesgosas y su Alternativa

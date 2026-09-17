@@ -4,6 +4,7 @@ import { logoutAction } from "@/actions/auth.actions";
 
 const LINKS = [
   { href: "/servicios", label: "Servicios" },
+  { href: "/productos", label: "Productos" },
   { href: "/equipo", label: "Equipo" },
 ];
 

@@ -52,7 +52,7 @@ src/app/                 rutas (App Router)
   api/health/route.ts    health check (no toca DB ni auth)
   (auth)/                login/registro
   (dashboard)/           layout (guard de sesión + BottomNav) + inicio, caja,
-                          agenda, servicios, equipo, mas,
+                          agenda, servicios, productos, equipo, mas,
                           estadisticas (vacío)
 src/components/          ui/ (incluye BottomNav) · forms/ · timers/
 src/lib/supabase/        client.ts (browser)  ·  server.ts (Server Components/Actions/Route Handlers)
@@ -174,4 +174,24 @@ min, cobro de un turno de mañana rechazado, saldo 50.000 + 30.000 =
 80.000 en pantalla y en `final_balance`). Ver `docs/arquitectura.md`
 sección "Agenda de Turnos Programados" y `docs/decisiones.md`.
 
-El resto (productos, estadísticas) sigue siendo esqueleto sin lógica.
+Spec 07 (productos y movimientos de caja) implementada y probada con
+Vitest (mocks de Supabase) y de punta a punta en el navegador contra el
+proyecto real con una cuenta de dueño (catálogo, egreso/ingreso manual,
+venta con y sin stock, verificado en la base), más las RLS nuevas con
+scripts descartables. También probada con una cuenta de barbero (sin
+controles de catálogo, acciones del catálogo rechazadas aunque se llamen
+directo, venta desde su propia caja). `/productos` (catálogo con stock; solo el dueño crea, edita
+y activa/desactiva, validado en el Server Action) con link desde `/mas`.
+En `/caja`, sección "Movimientos": ingreso/egreso manual y venta de
+producto, las dos resuelven la caja abierta en el servidor. La venta
+descuenta stock con un update condicionado al stock leído (sin RPC
+atómico, ver `docs/deuda-tecnica.md`). Dos migraciones aplicadas:
+`20260916020000_create_products_table.sql` y
+`20260916030000_transactions_insert_open_session_only.sql` (RLS de
+`transactions` ahora exige caja `open`, a pedido del usuario porque la
+spec asumía que ya lo hacía). La lógica del monto con separador de miles
+de `OpenCashView` pasó a `src/components/forms/useAmountInput.ts`. Ver
+`docs/arquitectura.md` sección "Productos y Movimientos de Caja" y
+`docs/decisiones.md`.
+
+El resto (estadísticas) sigue siendo esqueleto sin lógica.

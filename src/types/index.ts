@@ -35,7 +35,8 @@ export interface Product {
   name: string;
   price: number;
   stock: number;
-  low_stock_threshold: number;
+  low_stock_threshold: number | null;
+  is_active: boolean;
 }
 
 export interface Service {
