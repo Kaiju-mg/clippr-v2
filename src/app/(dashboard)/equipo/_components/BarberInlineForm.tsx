@@ -21,6 +21,12 @@ interface BarberInlineFormProps {
   onSaved: () => void;
 }
 
+interface CreatedCredentials {
+  name: string;
+  email: string;
+  temporaryPassword: string;
+}
+
 export function BarberInlineForm({
   barber,
   onCancel,
@@ -34,6 +40,10 @@ export function BarberInlineForm({
   );
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  // Solo vive en memoria mientras se muestra: al tocar "Listo" se pierde y
+  // no hay forma de volver a verla (no se guarda en ningún lado).
+  const [created, setCreated] = useState<CreatedCredentials | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const fieldPrefix = barber?.id ?? "new";
 
@@ -42,18 +52,26 @@ export function BarberInlineForm({
     setError(null);
     setIsLoading(true);
 
-    const result = barber
-      ? await updateBarberAction(barber.id, {
-          level,
-          commission_pct: Number(commissionPct),
-        })
-      : await createBarberAction({
-          name,
-          email,
-          level,
-          commission_pct: Number(commissionPct),
-        });
+    if (barber) {
+      const result = await updateBarberAction(barber.id, {
+        level,
+        commission_pct: Number(commissionPct),
+      });
+      setIsLoading(false);
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+      onSaved();
+      return;
+    }
 
+    const result = await createBarberAction({
+      name,
+      email,
+      level,
+      commission_pct: Number(commissionPct),
+    });
     setIsLoading(false);
 
     if (!result.success) {
@@ -61,7 +79,51 @@ export function BarberInlineForm({
       return;
     }
 
-    onSaved();
+    setCreated({
+      name: result.data.barber.name,
+      email: email.trim(),
+      temporaryPassword: result.data.temporaryPassword,
+    });
+  }
+
+  async function handleCopy() {
+    if (!created) return;
+    try {
+      await navigator.clipboard.writeText(created.temporaryPassword);
+      setCopied(true);
+    } catch {
+      // Sin permiso de portapapeles: la contraseña igual está en pantalla.
+    }
+  }
+
+  if (created) {
+    return (
+      <div className="bg-surface-2 mx-0.5 mb-3.5 flex flex-col gap-3 rounded-lg p-3.5">
+        <p className="text-foreground text-sm">
+          Listo, {created.name} ya puede entrar con{" "}
+          <span className="font-medium">{created.email}</span> y esta
+          contraseña:
+        </p>
+        <p
+          aria-label="Contraseña temporal"
+          className="bg-background border-line rounded border py-3 text-center font-mono text-2xl font-bold tracking-[0.3em] tabular-nums select-all"
+        >
+          {created.temporaryPassword}
+        </p>
+        <p className="text-muted text-sm">
+          Anotala o pasásela ahora: no se vuelve a mostrar. Después la puede
+          cambiar desde Más → Cambiar contraseña.
+        </p>
+        <div className="flex items-center justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={handleCopy}>
+            {copied ? "Copiada" : "Copiar"}
+          </Button>
+          <Button type="button" onClick={onSaved}>
+            Listo
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (

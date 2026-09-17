@@ -6,6 +6,7 @@ const LINKS = [
   { href: "/servicios", label: "Servicios" },
   { href: "/productos", label: "Productos" },
   { href: "/equipo", label: "Equipo" },
+  { href: "/mas/cambiar-password", label: "Cambiar contraseña" },
 ];
 
 export default function MasPage() {

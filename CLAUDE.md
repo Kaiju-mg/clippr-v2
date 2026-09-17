@@ -194,4 +194,10 @@ de `OpenCashView` pasó a `src/components/forms/useAmountInput.ts`. Ver
 `docs/arquitectura.md` sección "Productos y Movimientos de Caja" y
 `docs/decisiones.md`.
 
+Contraseñas de barberos (2026-09-16, no es una spec del backlog): el alta
+en `/equipo` genera una contraseña temporal aleatoria (`src/lib/passwords.ts`)
+que se muestra una sola vez al dueño, en vez de la fija `Clippr2026!`, y
+`/mas/cambiar-password` permite cambiarla (opcional, pide la actual). Sin
+cambio forzado ni recuperación por email (Fase 2). Ver `docs/decisiones.md`.
+
 El resto (estadísticas) sigue siendo esqueleto sin lógica.

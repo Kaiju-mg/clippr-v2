@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { generateTemporaryPassword } from "@/lib/passwords";
 import type { User, UserLevel } from "@/types";
 
 export type TeamActionResult<T> =
@@ -26,9 +27,15 @@ const MENSAJE_ACCESO_DENEGADO =
   "Acceso denegado: solo el dueño puede gestionar el equipo.";
 const MENSAJE_CORREO_DUPLICADO = "Este correo ya está registrado en Clippr.";
 
-// Contraseña inicial del barbero: la cambia él mismo la primera vez que
-// entra (fuera del alcance de esta spec). Ver docs/specs/03-gestion-de-equipo.md.
-const PASSWORD_POR_DEFECTO = "Clippr2026!";
+export interface CreatedBarber {
+  barber: User;
+  /**
+   * Contraseña temporal aleatoria. Solo viaja en esta respuesta para que el
+   * dueño la vea una vez: no se guarda ni se loguea en ningún lado. El
+   * barbero la puede cambiar en /mas/cambiar-password. Ver docs/decisiones.md.
+   */
+  temporaryPassword: string;
+}
 
 const NIVELES_VALIDOS: UserLevel[] = ["junior", "pro", "senior", "elite"];
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -114,10 +121,12 @@ export async function getTeamAction(): Promise<TeamActionResult<User[]>> {
  * Da de alta a un barbero: crea su cuenta de Auth (Admin API, sin afectar
  * la sesión del dueño) y su perfil en public.users. Solo un dueño puede
  * ejecutar esto — se valida acá, no solo con RLS (ver docs/specs/03).
+ * Cada barbero arranca con su propia contraseña temporal aleatoria, que se
+ * devuelve una sola vez para mostrársela al dueño.
  */
 export async function createBarberAction(
   data: BarberPayload,
-): Promise<TeamActionResult<User>> {
+): Promise<TeamActionResult<CreatedBarber>> {
   const validationError = validateBarberPayload(data);
   if (validationError) {
     return { success: false, error: validationError };
@@ -132,11 +141,12 @@ export async function createBarberAction(
 
   const admin = createAdminClient();
   const email = data.email.trim();
+  const temporaryPassword = generateTemporaryPassword();
 
   const { data: authResult, error: authError } =
     await admin.auth.admin.createUser({
       email,
-      password: PASSWORD_POR_DEFECTO,
+      password: temporaryPassword,
       email_confirm: true,
     });
 
@@ -173,7 +183,10 @@ export async function createBarberAction(
   }
 
   revalidatePath("/equipo");
-  return { success: true, data: created as User };
+  return {
+    success: true,
+    data: { barber: created as User, temporaryPassword },
+  };
 }
 
 /**

@@ -87,6 +87,15 @@ barbero real y loguearse con esa cuenta) en esta sesión.
   después inserta el perfil en `public.users` con el cliente normal (sesión
   del dueño, con RLS), heredando `barbershop_id` del propio perfil del
   dueño — nunca del payload que manda el cliente.
+- **Contraseña temporal (2026-09-16):** cada cuenta nueva se crea con una
+  contraseña aleatoria de 6 caracteres (`src/lib/passwords.ts`), que
+  `createBarberAction` devuelve una sola vez y `BarberInlineForm` le muestra
+  al dueño (con "Copiar"); no se guarda en ningún lado. El barbero la puede
+  cambiar, si quiere, en `/mas/cambiar-password` (`changePasswordAction`,
+  pide la actual). Sin cambio forzado ni recuperación por email todavía —
+  ver `decisiones.md` y `deuda-tecnica.md`. Verificado contra el Supabase
+  real con un usuario descartable (alta, login, cambio, login con la vieja
+  rechazado).
 - **RBAC en el Server Action, no en RLS:** `createBarberAction` y
   `updateBarberAction` verifican explícitamente `role === 'owner'` de quien
   llama antes de hacer nada. RLS solo aísla tenants (Barbería A de B); un

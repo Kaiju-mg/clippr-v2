@@ -86,3 +86,70 @@ export async function logoutAction(): Promise<void> {
   await supabase.auth.signOut();
   redirect("/login");
 }
+
+export interface ChangePasswordInput {
+  currentPassword: string;
+  newPassword: string;
+}
+
+/**
+ * Cambia la contraseña del usuario autenticado (pensado para que un barbero
+ * reemplace la temporal que le dio el dueño, pero sirve para cualquiera).
+ * Pide la contraseña actual y la verifica antes de cambiarla: sin eso,
+ * alguien con el celular del barbero desbloqueado y la sesión abierta
+ * podría cambiarla y dejarlo afuera.
+ */
+export async function changePasswordAction(
+  data: ChangePasswordInput,
+): Promise<ActionResult> {
+  if (data.newPassword.length < 6) {
+    return {
+      success: false,
+      error: "La contraseña nueva debe tener al menos 6 caracteres.",
+    };
+  }
+
+  if (data.newPassword === data.currentPassword) {
+    return {
+      success: false,
+      error: "La contraseña nueva tiene que ser distinta de la actual.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user?.email) {
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
+  // Supabase no pide la contraseña actual en updateUser: la verificamos
+  // con un login del mismo usuario (la sesión sigue siendo la suya).
+  const { error: verifyError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: data.currentPassword,
+  });
+
+  if (verifyError) {
+    return { success: false, error: "La contraseña actual no es correcta." };
+  }
+
+  const { error: updateError } = await supabase.auth.updateUser({
+    password: data.newPassword,
+  });
+
+  if (updateError) {
+    if (updateError.code === "weak_password") {
+      return {
+        success: false,
+        error: "Esa contraseña es muy débil. Probá con una más larga.",
+      };
+    }
+    console.error("changePasswordAction:", updateError.message);
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
+  return { success: true };
+}

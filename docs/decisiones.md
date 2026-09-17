@@ -845,3 +845,30 @@ mejor un solo lugar para arreglarla.
 Costo: `OpenCashView` se tocó sin tests de UI que lo cubran; se revisó a
 mano que el comportamiento sea el mismo y después se probó en el navegador
 (abrir caja con 50.000 mostró "50.000"), pero sigue sin test automatizado.
+
+## 2026-09-16 — Contraseña temporal aleatoria por barbero + cambio opcional, no cambio forzado en el primer login
+Elegido: `createBarberAction` genera una contraseña temporal de 6
+caracteres (`generateTemporaryPassword` en `src/lib/passwords.ts`:
+`crypto.randomInt`, mayúsculas y dígitos sin 0/O/1/I/L, al menos una letra y
+un dígito) y la devuelve una sola vez; `BarberInlineForm` se la muestra al
+dueño con "Copiar" y "Listo", y no se guarda ni se loguea en ningún lado.
+Nueva pantalla `/mas/cambiar-password` (`changePasswordAction` en
+`auth.actions.ts`) para que cualquiera cambie la suya, pidiendo la actual.
+Reemplaza a `PASSWORD_POR_DEFECTO = "Clippr2026!"`, igual para todos.
+Descartado: (1) cambio obligatorio en el primer login (columna
+`needs_password_change`, intercepción en `layout.tsx`, redirecciones) —
+sobre-ingeniería para la beta; (2) invitación por email de Supabase —
+depende de tener el envío de mails configurado ("Confirm email" está
+desactivado). Queda como Fase 2.
+Por qué: decisión del usuario ("Fase 1: MVP y beta cerrada"). Una contraseña
+fija en el repo le daba a cualquiera acceso a todas las cuentas de
+barberos. Se pide la contraseña actual para cambiarla (y se verifica con
+`signInWithPassword`, porque `updateUser` de Supabase no la pide): sin eso,
+alguien con el celular desbloqueado y la sesión abierta podría dejar al
+barbero afuera.
+Costo: 6 caracteres sobre 31 símbolos (~887 millones de combinaciones)
+depende del rate limit de login de Supabase para no ser adivinable; si el
+barbero nunca la cambia, esa es su contraseña para siempre. Si el dueño
+cierra el panel sin anotarla, no hay forma de verla ni de regenerarla desde
+la app (ver `docs/deuda-tecnica.md`). Los barberos creados antes de este
+cambio siguen con `Clippr2026!`.

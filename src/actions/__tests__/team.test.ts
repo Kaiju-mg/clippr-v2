@@ -265,7 +265,7 @@ describe("createBarberAction — happy path y errores de servidor", () => {
 
     expect(createUser).toHaveBeenCalledWith({
       email: "juan@example.com",
-      password: "Clippr2026!",
+      password: expect.stringMatching(/^[A-HJKMNP-Z2-9]{6}$/),
       email_confirm: true,
     });
     expect(builders[1].insert).toHaveBeenCalledWith({
@@ -276,7 +276,39 @@ describe("createBarberAction — happy path y errores de servidor", () => {
       level: "junior",
       commission_pct: 40,
     });
-    expect(result).toEqual({ success: true, data: BARBER });
+    // La contraseña que se devuelve al dueño es la misma con la que se creó
+    // la cuenta, no otra.
+    const [{ password }] = createUser.mock.calls[0] as unknown as [
+      { password: string },
+    ];
+    expect(result).toEqual({
+      success: true,
+      data: { barber: BARBER, temporaryPassword: password },
+    });
+  });
+
+  it("genera una contraseña distinta para cada barbero", async () => {
+    const passwords: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      mockSupabaseClient({
+        fromResults: [
+          { data: OWNER_PROFILE, error: null },
+          { data: BARBER, error: null },
+        ],
+      });
+      mockAdminClient({ data: { user: { id: `auth-${i}` } }, error: null });
+
+      const result = await createBarberAction({
+        name: "Juan",
+        email: `juan${i}@example.com`,
+        level: "junior",
+        commission_pct: 40,
+      });
+      if (result.success) passwords.push(result.data.temporaryPassword);
+    }
+
+    expect(passwords).toHaveLength(2);
+    expect(passwords[0]).not.toBe(passwords[1]);
   });
 
   it("muestra un mensaje limpio si el correo ya está registrado", async () => {
