@@ -204,7 +204,9 @@ que se muestra una sola vez al dueño, en vez de la fija `Clippr2026!`, y
 cambio forzado ni recuperación por email (Fase 2). Ver `docs/decisiones.md`.
 
 Spec 08 (estadísticas, niveles y rachas) implementada y probada con Vitest
-(mocks de Supabase). `/estadisticas` decide por rol: el dueño ve KPIs de la
+(mocks de Supabase) y de punta a punta en el navegador contra el proyecto
+real, con una cuenta de barbero y una de dueño de la misma barbería.
+`/estadisticas` decide por rol: el dueño ve KPIs de la
 barbería (ingresos, cortes, promedio diario, ticket promedio) con filtros
 Hoy/Semana/Mes vía `?rango=` y un leaderboard del equipo; el barbero ve su
 día, su racha y una barra de progreso de nivel. Las píldoras de `/inicio`
@@ -218,11 +220,13 @@ a 1; `src/lib/streaks.ts`). Las dos se recalculan en
 cierre: si falla, se loguea y la caja igual queda cerrada.
 Migración `20260917000000_owner_stats_visibility.sql` (función
 `current_user_role()` + `select` de `cash_sessions`/`appointments`/
-`transactions` abierto al dueño de la barbería) **escrita pero NO aplicada
-todavía** con `supabase db push`, y `/estadisticas` no se probó en el
-navegador contra el proyecto real. Ojo: al aflojar esas policies,
-`getAgendaAction` pasó a filtrar `user_id` a mano — ninguna consulta puede
-seguir asumiendo que RLS la acota a lo propio sobre esas tres tablas. Ver
+`transactions` abierto al dueño de la barbería) aplicada con
+`supabase db push` y verificada en el navegador: el dueño ve el leaderboard
+con los cortes y los ingresos de su barbero, que antes de la migración le
+estaban tapados. Ojo: al aflojar esas policies, `getAgendaAction` pasó a
+filtrar `user_id` a mano — ninguna consulta puede seguir asumiendo que RLS
+la acota a lo propio sobre esas tres tablas (verificado: la agenda del dueño
+sigue vacía aunque su barbero tenga turnos ese día). Ver
 `docs/arquitectura.md` sección "Estadísticas, Niveles y Rachas",
 `docs/decisiones.md` y `docs/deuda-tecnica.md`.
 

@@ -955,3 +955,27 @@ peor que perder un punto de racha.
 Costo: una racha puede quedar sin sumar en silencio y no hay forma de
 recalcularla después (no hay job de reconciliación) — ver
 `docs/deuda-tecnica.md`.
+
+## 2026-09-17 — "Cobrado hoy" se recorta por `transactions.created_at`, no por el día de apertura de la caja
+Elegido: `sumIncome` (`stats.actions.ts`) filtra los movimientos por
+`created_at` dentro del rango, y busca las cajas por **intersección** con ese
+rango (`start_time < fin` y `end_time >= inicio or end_time is null`) en vez
+de por día de apertura. Las cajas siguen sirviendo para saber de quién es
+cada movimiento (`transactions` no tiene `user_id`), no para recortar el
+tiempo.
+Descartado: recortar por `cash_sessions.start_time`, que era la primera
+implementación.
+Por qué: lo encontró la prueba en el navegador contra el proyecto real. El
+barbero tenía una caja abierta el 16/09 a las 21:27 y todavía sin cerrar; al
+cobrar un corte el 17, `/estadisticas` mostraba **"1 corte hoy" junto a
+"Gs. 0 cobrado hoy"** — los cortes se contaban por `appointments.start_time`
+(día calendario) y la plata por el día de apertura de la caja, así que las
+dos mitades de la misma pantalla hablaban de días distintos. Una caja que el
+barbero se olvidó de cerrar no tiene por qué sacar del día de hoy lo que se
+cobró hoy.
+Costo: una jornada nocturna que cruza la medianoche se parte en dos días,
+que es el reverso del mismo problema — pero es el corte que ya usan los
+cortes y la agenda, así que al menos toda la app corta el día igual. La
+racha es la única que sigue mirando `cash_sessions.start_time`, y eso es a
+propósito (caso borde 3 de la spec: cerrar a las 2 AM es la jornada
+anterior).

@@ -401,10 +401,13 @@ leer ni cargar movimientos en la caja del dueño.
 ### Estadísticas, Niveles y Rachas (implementado)
 
 Octava rebanada vertical (`docs/specs/08-estadisticas-niveles-rachas.md`).
-Migración `20260917000000_owner_stats_visibility.sql`. Probado con Vitest
-(Supabase mockeado). Las dos reglas de negocio que la spec dejaba abiertas
-(umbrales de nivel y qué es un "día hábil") se consultaron con el usuario y
-quedaron escritas en la sección 6 de la spec y en `docs/decisiones.md`.
+Migración `20260917000000_owner_stats_visibility.sql`, aplicada contra el
+proyecto real (`supabase db push`). Probado con Vitest (Supabase mockeado)
+**y** de punta a punta en el navegador el 2026-09-17, con una cuenta de
+barbero y una de dueño de la misma barbería (ver "Prueba de punta a punta"
+más abajo). Las dos reglas de negocio que la spec dejaba abiertas (umbrales
+de nivel y qué es un "día hábil") se consultaron con el usuario y quedaron
+escritas en la sección 6 de la spec y en `docs/decisiones.md`.
 
 - **RLS: el dueño ve a su equipo.** `public.current_user_role()`
   (`SECURITY DEFINER`, mismo patrón que `current_barbershop_id()` /
@@ -452,6 +455,21 @@ quedaron escritas en la sección 6 de la spec y en `docs/decisiones.md`.
   de tumbar la pantalla donde el barbero arranca los cortes).
   `Estadísticas` entra en `/mas`, no en la `BottomNav`: la barra se mantiene
   en 4 íconos de uso diario.
+
+- **Prueba de punta a punta (2026-09-17, proyecto real):** con el barbero —
+  estado vacío ("Todavía no hay actividad hoy"), cobro de un walk-in,
+  píldoras de `/inicio` con números reales, cierre de caja con la racha
+  pasando de 0 a 1 y después de 1 a 2 en días consecutivos, todo verificado
+  contra la base. Con el dueño — leaderboard con los datos del barbero (lo
+  que la migración habilita), filtros Hoy/Semana/Mes con los totales
+  cruzados contra las `transactions` de la base, `/agenda` vacía a pesar de
+  que el barbero tiene turnos ese día (el filtro `user_id` nuevo), `/caja`
+  mostrando la propia y `/inicio` con sus métricas personales, no las del
+  negocio. Esa prueba encontró un bug que se corrigió en el acto: "cobrado
+  hoy" se recortaba por el día de apertura de la caja, así que una caja
+  abierta la noche anterior y todavía sin cerrar mostraba "1 corte hoy"
+  junto a "Gs. 0 cobrado hoy". El recorte pasó a `transactions.created_at`
+  y las cajas se buscan por intersección con el rango.
 
 ## Modelo de Datos
 
