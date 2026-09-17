@@ -5,10 +5,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(),
 }));
 
-import {
-  getBarberStatsAction,
-  getOwnerStatsAction,
-} from "../stats.actions";
+import { getBarberStatsAction, getOwnerStatsAction } from "../stats.actions";
 
 interface MockResult {
   data?: unknown;
@@ -56,7 +53,9 @@ function mockSupabase(builders: Record<string, QueryBuilderMock>) {
   const from = vi.fn((table: string) => builders[table]);
   vi.mocked(createClient).mockResolvedValue({
     from,
-    auth: { getUser: vi.fn(async () => ({ data: { user: { id: "auth-1" } } })) },
+    auth: {
+      getUser: vi.fn(async () => ({ data: { user: { id: "auth-1" } } })),
+    },
   } as unknown as Awaited<ReturnType<typeof createClient>>);
   return { from };
 }

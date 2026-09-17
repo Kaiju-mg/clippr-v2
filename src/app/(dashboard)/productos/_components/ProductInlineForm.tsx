@@ -84,7 +84,7 @@ export function ProductInlineForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="mx-0.5 mb-3.5 flex flex-col gap-3 rounded-lg bg-surface-2 p-3.5"
+      className="bg-surface-2 mx-0.5 mb-3.5 flex flex-col gap-3 rounded-lg p-3.5"
     >
       <Input
         id={`product-name-${fieldPrefix}`}
@@ -127,7 +127,7 @@ export function ProductInlineForm({
       />
 
       {error && (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-danger text-sm">
           {error}
         </p>
       )}

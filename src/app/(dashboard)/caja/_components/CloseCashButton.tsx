@@ -37,13 +37,13 @@ export function CloseCashButton({ sessionId }: CloseCashButtonProps) {
 
   if (isConfirming) {
     return (
-      <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-3.5">
-        <p className="text-sm text-foreground">
+      <div className="border-line bg-surface-2 flex flex-col gap-3 rounded-lg border p-3.5">
+        <p className="text-foreground text-sm">
           ¿Cerrar la caja? No vas a poder deshacer esto.
         </p>
 
         {error && (
-          <p role="alert" className="text-sm text-danger">
+          <p role="alert" className="text-danger text-sm">
             {error}
           </p>
         )}

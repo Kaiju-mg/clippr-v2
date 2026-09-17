@@ -95,12 +95,12 @@ export function AppointmentRow({
           <span className="font-display truncate text-[17px] font-semibold">
             {appointment.client_name ?? "Sin nombre"}
           </span>
-          <span className="text-[13px] text-muted">
+          <span className="text-muted text-[13px]">
             {formatTime(appointment.start_time)} · {serviceName}
           </span>
         </div>
         <span
-          className={`whitespace-nowrap text-[17px] font-bold tabular-nums text-accent ${
+          className={`text-accent text-[17px] font-bold whitespace-nowrap tabular-nums ${
             isScheduled ? "" : "opacity-40"
           }`}
         >
@@ -128,7 +128,7 @@ export function AppointmentRow({
           </Button>
         </div>
       ) : (
-        <span className="text-right text-[13px] text-muted">
+        <span className="text-muted text-right text-[13px]">
           {STATUS_LABELS[optimisticStatus] ?? optimisticStatus}
         </span>
       )}
@@ -136,7 +136,7 @@ export function AppointmentRow({
       {isScheduled && !cashSessionId && (
         <p
           role="alert"
-          className="flex items-center justify-end gap-2 text-sm text-danger"
+          className="text-danger flex items-center justify-end gap-2 text-sm"
         >
           Debes abrir tu caja diaria antes de cobrar un corte.
           <Link href="/caja" className="underline">
@@ -146,7 +146,7 @@ export function AppointmentRow({
       )}
 
       {error && (
-        <p role="alert" className="text-right text-sm text-danger">
+        <p role="alert" className="text-danger text-right text-sm">
           {error}
         </p>
       )}

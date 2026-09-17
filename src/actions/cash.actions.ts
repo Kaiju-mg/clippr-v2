@@ -2,18 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import {
-  businessDateOf,
-  businessRangeUtc,
-  shiftDateISO,
-} from "@/lib/dates";
+import { businessDateOf, businessRangeUtc, shiftDateISO } from "@/lib/dates";
 import { LEVEL_WINDOW_DAYS, levelForCuts } from "@/lib/levels";
 import { nextStreakCount } from "@/lib/streaks";
 import type { CashSession, Transaction, TransactionType } from "@/types";
 
 export type CashActionResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string };
+  { success: true; data: T } | { success: false; error: string };
 
 const MENSAJE_ERROR_GENERICO = "Algo salió mal. Intentá de nuevo.";
 const MENSAJE_CAJA_YA_ABIERTA = "Ya tenés una caja abierta.";
@@ -180,7 +175,12 @@ async function updateStreakAndLevel(
   // Una caja sin un solo ingreso no es una jornada trabajada: no suma ni
   // rompe la racha, pero el nivel igual se recalcula.
   if (incomeOfSession <= 0) {
-    await applyStreakAndLevel(supabase, profile.id, profile.streak_count, level);
+    await applyStreakAndLevel(
+      supabase,
+      profile.id,
+      profile.streak_count,
+      level,
+    );
     return;
   }
 

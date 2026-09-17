@@ -21,7 +21,7 @@ export default async function AgendaPage({ searchParams }: AgendaPageProps) {
 
   if (!agendaResult.success) {
     return (
-      <p role="alert" className="p-4 text-sm text-danger">
+      <p role="alert" className="text-danger p-4 text-sm">
         {agendaResult.error}
       </p>
     );
@@ -29,7 +29,7 @@ export default async function AgendaPage({ searchParams }: AgendaPageProps) {
 
   if (!cashResult.success) {
     return (
-      <p role="alert" className="p-4 text-sm text-danger">
+      <p role="alert" className="text-danger p-4 text-sm">
         {cashResult.error}
       </p>
     );
@@ -37,7 +37,7 @@ export default async function AgendaPage({ searchParams }: AgendaPageProps) {
 
   if (!servicesResult.success) {
     return (
-      <p role="alert" className="p-4 text-sm text-danger">
+      <p role="alert" className="text-danger p-4 text-sm">
         {servicesResult.error}
       </p>
     );

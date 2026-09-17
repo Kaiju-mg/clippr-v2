@@ -8,12 +8,15 @@ import {
   isValidDateISO,
   shiftDateISO,
 } from "@/lib/dates";
-import { LEVEL_WINDOW_DAYS, levelProgress, type LevelProgress } from "@/lib/levels";
+import {
+  LEVEL_WINDOW_DAYS,
+  levelProgress,
+  type LevelProgress,
+} from "@/lib/levels";
 import type { UserLevel } from "@/types";
 
 export type StatsActionResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string };
+  { success: true; data: T } | { success: false; error: string };
 
 const MENSAJE_ERROR_GENERICO = "Algo salió mal. Intentá de nuevo.";
 const MENSAJE_FECHA_INVALIDA = "La fecha no es válida.";

@@ -62,11 +62,11 @@ export function OpenCashView() {
       className="flex min-h-[calc(100vh-57px)] flex-col items-center justify-center gap-8 p-4"
     >
       <div className="flex w-full max-w-sm flex-col items-center gap-2 text-center">
-        <p className="text-sm font-medium text-muted">
+        <p className="text-muted text-sm font-medium">
           Saldo inicial en el cajón
         </p>
         <div className="flex w-full items-baseline justify-center gap-2">
-          <span className="font-display text-2xl font-semibold text-muted">
+          <span className="font-display text-muted text-2xl font-semibold">
             Gs.
           </span>
           <input
@@ -78,7 +78,7 @@ export function OpenCashView() {
             onChange={amount.handleChange}
             placeholder="0"
             aria-label="Saldo inicial"
-            className="w-full min-w-0 border-none bg-transparent text-center font-display font-bold tabular-nums text-foreground outline-none"
+            className="font-display text-foreground w-full min-w-0 border-none bg-transparent text-center font-bold tabular-nums outline-none"
             style={{
               fontSize: calcularTamanioFuente(
                 Math.max(amount.formatted.length, 1),
@@ -89,7 +89,7 @@ export function OpenCashView() {
       </div>
 
       {error && (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-danger text-sm">
           {error}
         </p>
       )}

@@ -68,12 +68,12 @@ export function TransactionInlineForm() {
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex flex-col gap-3 rounded-lg bg-surface-2 p-3.5"
+      className="bg-surface-2 flex flex-col gap-3 rounded-lg p-3.5"
     >
       <div
         role="group"
         aria-label="Tipo de movimiento"
-        className="grid grid-cols-2 gap-1 rounded bg-background p-1"
+        className="bg-background grid grid-cols-2 gap-1 rounded p-1"
       >
         {(
           [
@@ -87,9 +87,7 @@ export function TransactionInlineForm() {
             aria-pressed={type === option.value}
             onClick={() => setType(option.value)}
             className={`rounded py-2 text-sm font-medium transition-colors ${
-              type === option.value
-                ? "bg-accent text-white"
-                : "text-muted"
+              type === option.value ? "bg-accent text-white" : "text-muted"
             }`}
           >
             {option.label}
@@ -100,7 +98,7 @@ export function TransactionInlineForm() {
       <div className="flex flex-col gap-1">
         <label
           htmlFor="transaction-amount"
-          className="text-sm font-medium text-muted"
+          className="text-muted text-sm font-medium"
         >
           Monto (Gs.)
         </label>
@@ -112,7 +110,7 @@ export function TransactionInlineForm() {
           value={amount.formatted}
           onChange={amount.handleChange}
           placeholder="0"
-          className="rounded border border-line bg-background px-3 py-2 tabular-nums text-foreground"
+          className="border-line bg-background text-foreground rounded border px-3 py-2 tabular-nums"
         />
       </div>
 
@@ -126,7 +124,7 @@ export function TransactionInlineForm() {
       />
 
       {error && (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-danger text-sm">
           {error}
         </p>
       )}

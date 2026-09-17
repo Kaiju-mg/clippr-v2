@@ -19,15 +19,18 @@ Esto es la **v2**, una reescritura. `docs/aprendizajes-v1.md` documenta qué fal
 No hay backend Python. La lógica de servidor vive en Route Handlers y Server Actions de Next.
 
 # Índice del proyecto
+
 - docs/producto.md — qué es y qué NO hace
 - docs/arquitectura.md — estado actual del diseño
 - docs/decisiones.md — por qué cada cosa es así (leer antes de refactorizar)
 - docs/backlog.md — qué falta
 
 ## Al empezar una sesión
+
 Leé decisiones.md antes de proponer cambios estructurales.
 
 ## Al terminar una feature
+
 Si tomaste una decisión de diseño no trivial, agregá una entrada
 en decisiones.md antes del commit.
 

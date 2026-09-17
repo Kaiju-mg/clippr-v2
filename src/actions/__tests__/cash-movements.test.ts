@@ -10,10 +10,7 @@ vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
 }));
 
-import {
-  registerTransactionAction,
-  sellProductAction,
-} from "../cash.actions";
+import { registerTransactionAction, sellProductAction } from "../cash.actions";
 
 interface MockResult<T> {
   data: T | null;
@@ -61,7 +58,9 @@ function mockSupabase(fromResults: MockResult<unknown>[]) {
 
   vi.mocked(createClient).mockResolvedValue({
     from,
-    auth: { getUser: vi.fn(async () => ({ data: { user: { id: "auth-1" } } })) },
+    auth: {
+      getUser: vi.fn(async () => ({ data: { user: { id: "auth-1" } } })),
+    },
   } as unknown as Awaited<ReturnType<typeof createClient>>);
 
   return { from, builders, tables };
@@ -239,7 +238,10 @@ describe("sellProductAction", () => {
     await sellProductAction({ productId: "p1", quantity: 1 });
 
     expect(builders[4].insert).toHaveBeenCalledWith(
-      expect.objectContaining({ amount: 45000, description: "Venta: Cera mate" }),
+      expect.objectContaining({
+        amount: 45000,
+        description: "Venta: Cera mate",
+      }),
     );
   });
 

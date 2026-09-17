@@ -73,11 +73,15 @@ function mockSupabase(builders: Record<string, QueryBuilderMock<unknown>>) {
   const from = vi.fn(
     (table: string) =>
       builders[table] ??
-      (table === "users" ? (usersBuilder as QueryBuilderMock<unknown>) : undefined),
+      (table === "users"
+        ? (usersBuilder as QueryBuilderMock<unknown>)
+        : undefined),
   );
   vi.mocked(createClient).mockResolvedValue({
     from,
-    auth: { getUser: vi.fn(async () => ({ data: { user: { id: "auth-1" } } })) },
+    auth: {
+      getUser: vi.fn(async () => ({ data: { user: { id: "auth-1" } } })),
+    },
   } as unknown as Awaited<ReturnType<typeof createClient>>);
   return { from };
 }
@@ -108,19 +112,39 @@ const APPOINTMENT: Appointment = {
 };
 
 function turnoAgendado(startTime: string) {
-  return { id: "apt1", service_id: "svc1", status: "scheduled", start_time: startTime };
+  return {
+    id: "apt1",
+    service_id: "svc1",
+    status: "scheduled",
+    start_time: startTime,
+  };
 }
 
 /** Arma los builders de un cobro completo; el select y el update de appointments comparten builder. */
-function mockCobro(startTime: string, transactionsError: { message: string } | null = null) {
-  const cashSessionsBuilder = createBuilder({ data: CASH_SESSION_ABIERTA, error: null });
-  const appointmentsBuilder = createBuilder<unknown>({ data: null, error: null });
+function mockCobro(
+  startTime: string,
+  transactionsError: { message: string } | null = null,
+) {
+  const cashSessionsBuilder = createBuilder({
+    data: CASH_SESSION_ABIERTA,
+    error: null,
+  });
+  const appointmentsBuilder = createBuilder<unknown>({
+    data: null,
+    error: null,
+  });
   appointmentsBuilder.maybeSingle = vi
     .fn()
     .mockResolvedValueOnce({ data: turnoAgendado(startTime), error: null })
-    .mockResolvedValueOnce({ data: { ...APPOINTMENT, status: "completed" }, error: null });
+    .mockResolvedValueOnce({
+      data: { ...APPOINTMENT, status: "completed" },
+      error: null,
+    });
   const servicesBuilder = createBuilder({ data: SERVICIO_ACTIVO, error: null });
-  const transactionsBuilder = createBuilder({ data: null, error: transactionsError });
+  const transactionsBuilder = createBuilder({
+    data: null,
+    error: transactionsError,
+  });
   mockSupabase({
     cash_sessions: cashSessionsBuilder,
     appointments: appointmentsBuilder,
@@ -147,7 +171,10 @@ describe("getAgendaAction", () => {
   });
 
   it("filtra por el día de Paraguay (00:00 a 00:00 del día siguiente), ordenado por start_time", async () => {
-    const appointmentsBuilder = createBuilder({ data: [APPOINTMENT], error: null });
+    const appointmentsBuilder = createBuilder({
+      data: [APPOINTMENT],
+      error: null,
+    });
     mockSupabase({ appointments: appointmentsBuilder });
 
     const result = await getAgendaAction("2026-09-16");
@@ -175,7 +202,10 @@ describe("getAgendaAction", () => {
   });
 
   it("devuelve un error genérico si falla la consulta", async () => {
-    const appointmentsBuilder = createBuilder({ data: null, error: { message: "boom" } });
+    const appointmentsBuilder = createBuilder({
+      data: null,
+      error: { message: "boom" },
+    });
     mockSupabase({ appointments: appointmentsBuilder });
 
     const result = await getAgendaAction("2026-09-16");
@@ -241,7 +271,10 @@ describe("scheduleAppointmentAction — servicio", () => {
 
   it("rechaza si el servicio está inactivo", async () => {
     mockSupabase({
-      services: createBuilder({ data: { ...SERVICIO_ACTIVO, is_active: false }, error: null }),
+      services: createBuilder({
+        data: { ...SERVICIO_ACTIVO, is_active: false },
+        error: null,
+      }),
     });
 
     const result = await scheduleAppointmentAction({
@@ -260,7 +293,10 @@ describe("scheduleAppointmentAction — servicio", () => {
 
 describe("scheduleAppointmentAction — happy path", () => {
   it("arma el instante en hora de Paraguay, suma la duración y recorta el nombre", async () => {
-    const appointmentsBuilder = createBuilder({ data: APPOINTMENT, error: null });
+    const appointmentsBuilder = createBuilder({
+      data: APPOINTMENT,
+      error: null,
+    });
     mockSupabase({
       services: createBuilder({ data: SERVICIO_ACTIVO, error: null }),
       appointments: appointmentsBuilder,
@@ -284,7 +320,10 @@ describe("scheduleAppointmentAction — happy path", () => {
   });
 
   it("un turno a las 21:30 queda dentro del rango del mismo día de Paraguay", async () => {
-    const appointmentsBuilder = createBuilder({ data: APPOINTMENT, error: null });
+    const appointmentsBuilder = createBuilder({
+      data: APPOINTMENT,
+      error: null,
+    });
     mockSupabase({
       services: createBuilder({ data: SERVICIO_ACTIVO, error: null }),
       appointments: appointmentsBuilder,
@@ -439,7 +478,9 @@ describe("cancelAppointmentAction", () => {
 
     const result = await cancelAppointmentAction("apt1");
 
-    expect(appointmentsBuilder.update).toHaveBeenCalledWith({ status: "cancelled" });
+    expect(appointmentsBuilder.update).toHaveBeenCalledWith({
+      status: "cancelled",
+    });
     expect(result).toEqual({ success: true, data: cancelled });
   });
 });

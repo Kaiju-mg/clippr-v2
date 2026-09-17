@@ -67,7 +67,7 @@ export function ScheduleInlineForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex flex-col gap-3 rounded-lg bg-surface-2 p-3.5"
+      className="bg-surface-2 flex flex-col gap-3 rounded-lg p-3.5"
     >
       <Input
         id="schedule-client"
@@ -81,7 +81,7 @@ export function ScheduleInlineForm({
       <div className="flex flex-col gap-1">
         <label
           htmlFor="schedule-service"
-          className="text-sm font-medium text-muted"
+          className="text-muted text-sm font-medium"
         >
           Servicio
         </label>
@@ -89,7 +89,7 @@ export function ScheduleInlineForm({
           id="schedule-service"
           value={serviceId}
           onChange={(event) => setServiceId(event.target.value)}
-          className="rounded border border-line bg-background px-3 py-2 text-foreground"
+          className="border-line bg-background text-foreground rounded border px-3 py-2"
           required
           disabled={services.length === 0}
         >
@@ -115,7 +115,7 @@ export function ScheduleInlineForm({
       />
 
       {error && (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-danger text-sm">
           {error}
         </p>
       )}

@@ -46,10 +46,7 @@ export default function CambiarPasswordPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <Link
-        href="/mas"
-        className="text-muted flex items-center gap-1 text-sm"
-      >
+      <Link href="/mas" className="text-muted flex items-center gap-1 text-sm">
         <ChevronLeft size={16} />
         Más
       </Link>

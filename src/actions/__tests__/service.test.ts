@@ -86,7 +86,9 @@ describe("getServicesAction", () => {
     const result = await getServicesAction();
 
     expect(from).toHaveBeenCalledWith("services");
-    expect(builder.order).toHaveBeenCalledWith("is_active", { ascending: false });
+    expect(builder.order).toHaveBeenCalledWith("is_active", {
+      ascending: false,
+    });
     expect(builder.order).toHaveBeenCalledWith("name");
     expect(result).toEqual({ success: true, data: [SERVICE, inactive] });
   });
@@ -252,7 +254,10 @@ describe("toggleServiceStatusAction", () => {
 
     expect(builder.update).toHaveBeenCalledWith({ is_active: false });
     expect(builder.eq).toHaveBeenCalledWith("id", "s1");
-    expect(result).toEqual({ success: true, data: { ...SERVICE, is_active: false } });
+    expect(result).toEqual({
+      success: true,
+      data: { ...SERVICE, is_active: false },
+    });
   });
 
   it("reactiva un servicio (is_active = true)", async () => {
@@ -265,7 +270,10 @@ describe("toggleServiceStatusAction", () => {
     const result = await toggleServiceStatusAction("s1", true);
 
     expect(builder.update).toHaveBeenCalledWith({ is_active: true });
-    expect(result).toEqual({ success: true, data: { ...SERVICE, is_active: true } });
+    expect(result).toEqual({
+      success: true,
+      data: { ...SERVICE, is_active: true },
+    });
   });
 
   it("devuelve 'no encontrado' si RLS bloquea la fila (otro tenant)", async () => {

@@ -78,17 +78,20 @@ export function SellProductForm({ products }: SellProductFormProps) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex flex-col gap-3 rounded-lg bg-surface-2 p-3.5"
+      className="bg-surface-2 flex flex-col gap-3 rounded-lg p-3.5"
     >
       <div className="flex flex-col gap-1">
-        <label htmlFor="sell-product" className="text-sm font-medium text-muted">
+        <label
+          htmlFor="sell-product"
+          className="text-muted text-sm font-medium"
+        >
           Producto
         </label>
         <select
           id="sell-product"
           value={productId}
           onChange={(event) => setProductId(event.target.value)}
-          className="rounded border border-line bg-background px-3 py-2 text-foreground"
+          className="border-line bg-background text-foreground rounded border px-3 py-2"
           required
         >
           <option value="" disabled>
@@ -130,7 +133,7 @@ export function SellProductForm({ products }: SellProductFormProps) {
       )}
 
       {error && (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-danger text-sm">
           {error}
         </p>
       )}

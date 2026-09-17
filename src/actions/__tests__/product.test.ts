@@ -60,7 +60,9 @@ function mockSupabase(fromResults: MockResult<unknown>[]) {
 
   vi.mocked(createClient).mockResolvedValue({
     from,
-    auth: { getUser: vi.fn(async () => ({ data: { user: { id: "auth-1" } } })) },
+    auth: {
+      getUser: vi.fn(async () => ({ data: { user: { id: "auth-1" } } })),
+    },
   } as unknown as Awaited<ReturnType<typeof createClient>>);
 
   return { from, builders };
@@ -124,7 +126,10 @@ describe("getProductsAction", () => {
 describe("createProductAction — validaciones", () => {
   it.each([
     [{ ...PAYLOAD, name: "  " }, "El nombre del producto es obligatorio."],
-    [{ ...PAYLOAD, price: 0 }, "El precio debe ser un número entero mayor a cero."],
+    [
+      { ...PAYLOAD, price: 0 },
+      "El precio debe ser un número entero mayor a cero.",
+    ],
     [
       { ...PAYLOAD, price: 1500.5 },
       "El precio debe ser un número entero mayor a cero.",
@@ -161,12 +166,12 @@ describe("createProductAction — validaciones", () => {
 
 describe("createProductAction", () => {
   it("el dueño crea un producto sin mandar barbershop_id", async () => {
-    const { builders } = mockSupabase([
-      OWNER,
-      { data: PRODUCT, error: null },
-    ]);
+    const { builders } = mockSupabase([OWNER, { data: PRODUCT, error: null }]);
 
-    const result = await createProductAction({ ...PAYLOAD, name: " Cera mate " });
+    const result = await createProductAction({
+      ...PAYLOAD,
+      name: " Cera mate ",
+    });
 
     expect(builders[1].insert).toHaveBeenCalledWith(PAYLOAD);
     expect(builders[1].insert.mock.calls[0][0]).not.toHaveProperty(
@@ -217,7 +222,10 @@ describe("updateProductAction", () => {
 
     const result = await updateProductAction("p-otro-tenant", { price: 1000 });
 
-    expect(result).toEqual({ success: false, error: "Producto no encontrado." });
+    expect(result).toEqual({
+      success: false,
+      error: "Producto no encontrado.",
+    });
   });
 
   it("un barbero no puede editar productos", async () => {

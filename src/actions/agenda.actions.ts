@@ -13,8 +13,7 @@ import {
 import type { Appointment, AppointmentStatus } from "@/types";
 
 export type AgendaActionResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string };
+  { success: true; data: T } | { success: false; error: string };
 
 export interface SchedulePayload {
   clientName: string;
@@ -33,8 +32,7 @@ const MENSAJE_FECHA_INVALIDA = "La fecha no es válida.";
 const MENSAJE_CLIENTE_INVALIDO = "El nombre del cliente es obligatorio.";
 const MENSAJE_INICIO_INVALIDO = "El horario de inicio del turno no es válido.";
 const MENSAJE_TURNO_INVALIDO = "Turno no encontrado o ya fue actualizado.";
-const MENSAJE_TURNO_FUTURO =
-  "No podés cobrar un turno de un día futuro.";
+const MENSAJE_TURNO_FUTURO = "No podés cobrar un turno de un día futuro.";
 const MENSAJE_TRANSACCION_FALLIDA =
   "El corte se guardó, pero no se pudo reflejar en la caja. Avisá para revisar el desfase.";
 
@@ -176,10 +174,7 @@ export async function scheduleAppointmentAction(
     .single();
 
   if (error) {
-    console.error(
-      "scheduleAppointmentAction (appointments):",
-      error.message,
-    );
+    console.error("scheduleAppointmentAction (appointments):", error.message);
     return { success: false, error: MENSAJE_ERROR_GENERICO };
   }
 
@@ -275,8 +270,11 @@ export async function completeScheduledAppointmentAction(
     return { success: false, error: MENSAJE_ERROR_GENERICO };
   }
 
-  const cambios: { status: "completed"; end_time: string; start_time?: string } =
-    { status: "completed", end_time: now.toISOString() };
+  const cambios: {
+    status: "completed";
+    end_time: string;
+    start_time?: string;
+  } = { status: "completed", end_time: now.toISOString() };
 
   if (now.getTime() < plannedStart.getTime()) {
     cambios.start_time = new Date(

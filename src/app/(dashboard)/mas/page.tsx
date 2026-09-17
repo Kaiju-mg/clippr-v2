@@ -20,10 +20,10 @@ export default function MasPage() {
 
       <ul className="flex flex-col">
         {LINKS.map(({ href, label }) => (
-          <li key={href} className="border-b border-line last:border-b-0">
+          <li key={href} className="border-line border-b last:border-b-0">
             <Link
               href={href}
-              className="flex items-center justify-between py-3.5 text-[15px] text-foreground"
+              className="text-foreground flex items-center justify-between py-3.5 text-[15px]"
             >
               {label}
               <ChevronRight size={18} className="text-muted" />
@@ -35,7 +35,7 @@ export default function MasPage() {
       <form action={logoutAction}>
         <button
           type="submit"
-          className="w-full rounded border border-line px-4 py-3 text-left text-[15px] text-danger transition-transform duration-100 active:scale-95"
+          className="border-line text-danger w-full rounded border px-4 py-3 text-left text-[15px] transition-transform duration-100 active:scale-95"
         >
           Cerrar sesión
         </button>

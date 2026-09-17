@@ -15,7 +15,7 @@ export default async function CajaPage() {
 
   if (!result.success) {
     return (
-      <p role="alert" className="p-4 text-sm text-danger">
+      <p role="alert" className="text-danger p-4 text-sm">
         {result.error}
       </p>
     );
@@ -36,7 +36,7 @@ export default async function CajaPage() {
 
   if (!balanceResult.success) {
     return (
-      <p role="alert" className="p-4 text-sm text-danger">
+      <p role="alert" className="text-danger p-4 text-sm">
         {balanceResult.error}
       </p>
     );
@@ -53,8 +53,8 @@ export default async function CajaPage() {
     <div className="flex flex-col gap-6 p-4">
       <h1 className="font-display text-xl font-semibold">Caja abierta</h1>
 
-      <div className="rounded-lg border border-line bg-surface-2 p-4">
-        <p className="text-sm text-muted">Saldo actual</p>
+      <div className="border-line bg-surface-2 rounded-lg border p-4">
+        <p className="text-muted text-sm">Saldo actual</p>
         <p className="font-display text-3xl font-semibold tabular-nums">
           {formatGuaranies(balance.current)}
         </p>
@@ -68,7 +68,9 @@ export default async function CajaPage() {
           </div>
           <div className="flex justify-between">
             <dt className="text-muted">Ingresos</dt>
-            <dd className="tabular-nums">+ {formatGuaranies(balance.income)}</dd>
+            <dd className="tabular-nums">
+              + {formatGuaranies(balance.income)}
+            </dd>
           </div>
           {balance.expense > 0 && (
             <div className="flex justify-between">
@@ -80,7 +82,7 @@ export default async function CajaPage() {
           )}
         </dl>
 
-        <p className="mt-3 text-sm text-muted">
+        <p className="text-muted mt-3 text-sm">
           Abierta desde{" "}
           {new Date(session.start_time).toLocaleString("es-PY", {
             dateStyle: "short",
@@ -93,7 +95,7 @@ export default async function CajaPage() {
       <CloseCashButton sessionId={session.id} />
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium text-muted">Movimientos</h2>
+        <h2 className="text-muted text-sm font-medium">Movimientos</h2>
         <TransactionInlineForm />
         {activeProducts.length > 0 && (
           <SellProductForm products={activeProducts} />

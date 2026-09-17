@@ -77,29 +77,39 @@ export function ServiceList({ services }: ServiceListProps) {
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-center justify-between">
         <h1 className="font-display text-xl font-semibold">Servicios</h1>
-        <Button onClick={toggleCreate} variant={isCreating ? "secondary" : "primary"}>
+        <Button
+          onClick={toggleCreate}
+          variant={isCreating ? "secondary" : "primary"}
+        >
           {isCreating ? "Cancelar" : "Nuevo servicio"}
         </Button>
       </div>
 
       {error && (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-danger text-sm">
           {error}
         </p>
       )}
 
       {isCreating && (
-        <ServiceInlineForm service={null} onCancel={closeForms} onSaved={handleSaved} />
+        <ServiceInlineForm
+          service={null}
+          onCancel={closeForms}
+          onSaved={handleSaved}
+        />
       )}
 
       {optimisticServices.length === 0 && !isCreating ? (
-        <p className="text-sm text-muted">Todavía no cargaste servicios.</p>
+        <p className="text-muted text-sm">Todavía no cargaste servicios.</p>
       ) : (
         <ul className="flex flex-col">
           {optimisticServices.map((service) => {
             const isOpen = editingId === service.id;
             return (
-              <li key={service.id} className="border-b border-line last:border-b-0">
+              <li
+                key={service.id}
+                className="border-line border-b last:border-b-0"
+              >
                 <div className="flex items-center justify-between gap-3 py-3.5">
                   <div
                     className={`flex min-w-0 flex-col gap-1 ${
@@ -109,12 +119,12 @@ export function ServiceList({ services }: ServiceListProps) {
                     <span className="font-display truncate text-[17px] font-semibold">
                       {service.name}
                     </span>
-                    <span className="text-[13px] text-muted">
+                    <span className="text-muted text-[13px]">
                       {service.duration_minutes} min
                     </span>
                   </div>
                   <span
-                    className={`whitespace-nowrap text-[17px] font-bold tabular-nums text-accent ${
+                    className={`text-accent text-[17px] font-bold whitespace-nowrap tabular-nums ${
                       service.is_active ? "" : "opacity-40"
                     }`}
                   >
@@ -136,15 +146,34 @@ export function ServiceList({ services }: ServiceListProps) {
                       aria-label={isOpen ? "Cerrar edición" : "Editar"}
                       aria-expanded={isOpen}
                       className={`grid h-8 w-8 place-items-center rounded-md border ${
-                        isOpen ? "border-accent text-accent" : "border-line text-muted"
+                        isOpen
+                          ? "border-accent text-accent"
+                          : "border-line text-muted"
                       }`}
                     >
                       {isOpen ? (
-                        <svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                        <svg
+                          viewBox="0 0 20 20"
+                          width="15"
+                          height="15"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                        >
                           <path d="M5.5 12.5 10 8l4.5 4.5" />
                         </svg>
                       ) : (
-                        <svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                        <svg
+                          viewBox="0 0 20 20"
+                          width="15"
+                          height="15"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
                           <path d="M13.3 3.3a1.6 1.6 0 0 1 2.3 2.3L6.4 14.8l-3 .8.8-3Z" />
                         </svg>
                       )}

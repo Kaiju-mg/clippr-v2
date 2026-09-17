@@ -291,7 +291,10 @@ describe("getCashBalanceAction", () => {
 
     const result = await getCashBalanceAction("cs1");
 
-    expect(transactionsBuilder.eq).toHaveBeenCalledWith("cash_session_id", "cs1");
+    expect(transactionsBuilder.eq).toHaveBeenCalledWith(
+      "cash_session_id",
+      "cs1",
+    );
     expect(result).toEqual({
       success: true,
       data: { income: 55000, expense: 5000, current: 100000 },

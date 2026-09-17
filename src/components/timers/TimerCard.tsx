@@ -27,7 +27,9 @@ function formatElapsed(ms: number): string {
  */
 export function TimerCard({ timer, cashSessionId, services }: TimerCardProps) {
   const removeTimer = useTimerStore((state) => state.removeTimer);
-  const [elapsedMs, setElapsedMs] = useState(() => Date.now() - timer.startTime);
+  const [elapsedMs, setElapsedMs] = useState(
+    () => Date.now() - timer.startTime,
+  );
   const [isFinishing, setIsFinishing] = useState(false);
 
   useEffect(() => {
@@ -43,11 +45,11 @@ export function TimerCard({ timer, cashSessionId, services }: TimerCardProps) {
   }
 
   return (
-    <div className="rounded-lg border border-line bg-surface-2 p-4">
+    <div className="border-line bg-surface-2 rounded-lg border p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex flex-col">
           {timer.label && (
-            <span className="text-sm text-muted">{timer.label}</span>
+            <span className="text-muted text-sm">{timer.label}</span>
           )}
           <span className="font-display text-3xl font-semibold tabular-nums">
             {formatElapsed(elapsedMs)}

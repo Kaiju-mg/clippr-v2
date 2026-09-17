@@ -53,7 +53,14 @@ function zonedParts(instant: Date) {
 /** Diferencia (ms) entre la hora de pared en la zona del negocio y UTC. */
 function offsetMs(instant: Date): number {
   const p = zonedParts(instant);
-  const wallAsUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  const wallAsUtc = Date.UTC(
+    p.year,
+    p.month - 1,
+    p.day,
+    p.hour,
+    p.minute,
+    p.second,
+  );
   return wallAsUtc - Math.floor(instant.getTime() / 1000) * 1000;
 }
 

@@ -78,7 +78,7 @@ export function AgendaView({
           onClick={() => goToDate(shiftDateISO(dateISO, -1))}
           disabled={isPending}
           aria-label="Día anterior"
-          className="grid h-8 w-8 place-items-center rounded-md border border-line text-muted disabled:opacity-50"
+          className="border-line text-muted grid h-8 w-8 place-items-center rounded-md border disabled:opacity-50"
         >
           <ChevronLeft size={16} strokeWidth={1.5} />
         </button>
@@ -88,7 +88,7 @@ export function AgendaView({
           onClick={() => goToDate(shiftDateISO(dateISO, 1))}
           disabled={isPending}
           aria-label="Día siguiente"
-          className="grid h-8 w-8 place-items-center rounded-md border border-line text-muted disabled:opacity-50"
+          className="border-line text-muted grid h-8 w-8 place-items-center rounded-md border disabled:opacity-50"
         >
           <ChevronRight size={16} strokeWidth={1.5} />
         </button>
@@ -105,7 +105,7 @@ export function AgendaView({
 
       {appointments.length === 0 && !isCreating ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
-          <p className="text-sm text-muted">
+          <p className="text-muted text-sm">
             Todavía no hay turnos para este día.
           </p>
           <Button onClick={() => setIsCreating(true)}>
@@ -119,7 +119,7 @@ export function AgendaView({
             return (
               <li
                 key={appointment.id}
-                className="border-b border-line last:border-b-0"
+                className="border-line border-b last:border-b-0"
               >
                 <AppointmentRow
                   appointment={appointment}

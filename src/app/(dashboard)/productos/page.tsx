@@ -19,7 +19,7 @@ export default async function ProductosPage() {
 
   if (!result.success) {
     return (
-      <p role="alert" className="p-4 text-sm text-danger">
+      <p role="alert" className="text-danger p-4 text-sm">
         {result.error}
       </p>
     );

@@ -27,7 +27,7 @@ export function TimerList({ cashSessionId, services }: TimerListProps) {
   return (
     <div className="flex flex-col gap-4">
       {!cashSessionId && (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-danger text-sm">
           Debes abrir tu caja diaria antes de cobrar un corte.
         </p>
       )}
@@ -48,7 +48,7 @@ export function TimerList({ cashSessionId, services }: TimerListProps) {
       <button
         type="button"
         onClick={handleStart}
-        className="flex w-full items-center justify-center gap-2.5 rounded-2xl border-[1.5px] border-accent bg-background px-6 py-4 text-accent transition-transform active:scale-[0.98]"
+        className="border-accent bg-background text-accent flex w-full items-center justify-center gap-2.5 rounded-2xl border-[1.5px] px-6 py-4 transition-transform active:scale-[0.98]"
       >
         <Play size={20} strokeWidth={2} fill="currentColor" />
         <span className="text-base font-semibold tracking-wide">
@@ -57,7 +57,7 @@ export function TimerList({ cashSessionId, services }: TimerListProps) {
       </button>
 
       {!hasHydrated ? null : timers.length === 0 ? (
-        <p className="text-sm text-muted">No hay temporizadores activos.</p>
+        <p className="text-muted text-sm">No hay temporizadores activos.</p>
       ) : (
         <ul className="flex flex-col gap-3">
           {timers.map((timer) => (

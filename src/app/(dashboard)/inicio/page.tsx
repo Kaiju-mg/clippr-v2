@@ -27,7 +27,7 @@ export default async function InicioPage() {
 
   if (!cashResult.success) {
     return (
-      <p role="alert" className="p-4 text-sm text-danger">
+      <p role="alert" className="text-danger p-4 text-sm">
         {cashResult.error}
       </p>
     );
@@ -35,7 +35,7 @@ export default async function InicioPage() {
 
   if (!servicesResult.success) {
     return (
-      <p role="alert" className="p-4 text-sm text-danger">
+      <p role="alert" className="text-danger p-4 text-sm">
         {servicesResult.error}
       </p>
     );
@@ -62,13 +62,13 @@ export default async function InicioPage() {
           href="/estadisticas"
           className="flex items-center gap-2 transition-transform duration-100 active:scale-95"
         >
-          <span className="flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-xs font-medium text-muted">
+          <span className="bg-surface-2 text-muted flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium">
             <Scissors size={12} strokeWidth={1.5} />
             {stats
               ? `${stats.completedCuts} ${stats.completedCuts === 1 ? "corte" : "cortes"} hoy`
               : "Cortes de hoy"}
           </span>
-          <span className="flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-xs font-medium text-muted">
+          <span className="bg-surface-2 text-muted flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium">
             <Flame size={12} strokeWidth={1.5} />
             {stats
               ? `Racha de ${stats.streakCount} ${stats.streakCount === 1 ? "día" : "días"}`

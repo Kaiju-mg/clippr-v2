@@ -28,7 +28,7 @@ export function BarberDashboard({ stats, firstName }: BarberDashboardProps) {
         <h1 className="font-display text-xl font-semibold tracking-tight">
           Tu rendimiento
         </h1>
-        <p className="text-sm text-muted">
+        <p className="text-muted text-sm">
           {firstName}, así viene tu día de hoy.
         </p>
       </header>
@@ -39,30 +39,29 @@ export function BarberDashboard({ stats, firstName }: BarberDashboardProps) {
       </div>
 
       {sinActividad && (
-        <p className="text-sm text-muted">
+        <p className="text-muted text-sm">
           Todavía no hay actividad hoy. Cuando cobres tu primer corte, los
           números aparecen acá.
         </p>
       )}
 
-      <section className="flex flex-col gap-3 rounded-lg bg-surface-2 p-4">
+      <section className="bg-surface-2 flex flex-col gap-3 rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
-            <p className="text-xs font-medium text-muted">Tu nivel</p>
+            <p className="text-muted text-xs font-medium">Tu nivel</p>
             <p className="font-display text-2xl font-semibold">
               {LEVEL_LABELS[progress.level]}
             </p>
           </div>
-          <span className="flex items-center gap-1.5 rounded-full bg-background px-3 py-1 text-sm font-medium tabular-nums">
+          <span className="bg-background flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium tabular-nums">
             <Flame size={14} strokeWidth={1.5} />
-            {stats.streakCount}{" "}
-            {stats.streakCount === 1 ? "día" : "días"}
+            {stats.streakCount} {stats.streakCount === 1 ? "día" : "días"}
           </span>
         </div>
 
         <div className="flex flex-col gap-1.5">
           <div
-            className="h-2 overflow-hidden rounded-full bg-background"
+            className="bg-background h-2 overflow-hidden rounded-full"
             role="progressbar"
             aria-valuemin={0}
             aria-valuemax={100}
@@ -74,11 +73,11 @@ export function BarberDashboard({ stats, firstName }: BarberDashboardProps) {
             }
           >
             <div
-              className="h-full rounded-full bg-accent"
+              className="bg-accent h-full rounded-full"
               style={{ width: `${Math.round(progress.ratio * 100)}%` }}
             />
           </div>
-          <p className="text-xs text-muted">
+          <p className="text-muted text-xs">
             {ventana}
             {progress.nextLevel
               ? ` · te ${progress.cutsToNext === 1 ? "falta" : "faltan"} ${progress.cutsToNext} para ${LEVEL_LABELS[progress.nextLevel]}`
@@ -86,7 +85,7 @@ export function BarberDashboard({ stats, firstName }: BarberDashboardProps) {
           </p>
         </div>
 
-        <p className="text-xs text-muted">
+        <p className="text-muted text-xs">
           Tu nivel se calcula sobre los últimos {LEVEL_WINDOW_DAYS} días: si
           bajás el ritmo, baja con vos.
         </p>

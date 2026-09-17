@@ -11,12 +11,12 @@ interface StatCardProps {
 
 export function StatCard({ label, value, hint }: StatCardProps) {
   return (
-    <div className="flex flex-col gap-1 rounded-lg bg-surface-2 p-4">
-      <p className="text-xs font-medium text-muted">{label}</p>
+    <div className="bg-surface-2 flex flex-col gap-1 rounded-lg p-4">
+      <p className="text-muted text-xs font-medium">{label}</p>
       <p className="font-display text-2xl font-semibold tabular-nums">
         {value}
       </p>
-      {hint && <p className="text-xs text-muted">{hint}</p>}
+      {hint && <p className="text-muted text-xs">{hint}</p>}
     </div>
   );
 }

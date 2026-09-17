@@ -36,9 +36,7 @@ export const LEVEL_LABELS: Record<UserLevel, string> = {
 
 /** Nivel que corresponde a una cantidad de cortes en la ventana. */
 export function levelForCuts(cuts: number): UserLevel {
-  const match = LEVEL_THRESHOLDS.find(
-    (threshold) => cuts >= threshold.minCuts,
-  );
+  const match = LEVEL_THRESHOLDS.find((threshold) => cuts >= threshold.minCuts);
   return match?.level ?? "junior";
 }
 

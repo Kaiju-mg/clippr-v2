@@ -5,8 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Product, UserRole } from "@/types";
 
 export type ProductActionResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string };
+  { success: true; data: T } | { success: false; error: string };
 
 export interface ProductPayload {
   name: string;

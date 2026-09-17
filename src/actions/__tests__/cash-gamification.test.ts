@@ -19,7 +19,11 @@ import { closeCashSessionAction } from "../cash.actions";
  * caja que se cierra, y qué cajas anteriores tuvieron ingresos).
  */
 
-type Result = { data?: unknown; count?: number | null; error: { message: string } | null };
+type Result = {
+  data?: unknown;
+  count?: number | null;
+  error: { message: string } | null;
+};
 
 interface BuilderMock {
   select: ReturnType<typeof vi.fn>;
@@ -91,11 +95,16 @@ function mockCierre(escenario: Escenario = {}) {
   // cash_sessions: (1) fetch de la caja a cerrar, (2) update, (3) lista de
   // cajas cerradas anteriores (resuelve por `then`).
   const cashSessions = createBuilder(
-    { data: { initial_balance: SESION.initial_balance, status: "open" }, error: null },
+    {
+      data: { initial_balance: SESION.initial_balance, status: "open" },
+      error: null,
+    },
     { data: CERRADA, error: null },
   );
   cashSessions.then = (onfulfilled) =>
-    Promise.resolve({ data: previous, error: null } as Result).then(onfulfilled);
+    Promise.resolve({ data: previous, error: null } as Result).then(
+      onfulfilled,
+    );
 
   // transactions: (1) computeBalance de la caja que se cierra, (2) ingresos
   // de las cajas anteriores.
@@ -110,9 +119,9 @@ function mockCierre(escenario: Escenario = {}) {
             error: null,
           }
         : {
-            data: (escenario.previousWithIncome ?? previous.map((s) => s.id)).map(
-              (id) => ({ cash_session_id: id }),
-            ),
+            data: (
+              escenario.previousWithIncome ?? previous.map((s) => s.id)
+            ).map((id) => ({ cash_session_id: id })),
             error: null,
           };
     return Promise.resolve(result).then(onfulfilled);
@@ -144,7 +153,9 @@ function mockCierre(escenario: Escenario = {}) {
 
   vi.mocked(createClient).mockResolvedValue({
     from,
-    auth: { getUser: vi.fn(async () => ({ data: { user: { id: "auth-1" } } })) },
+    auth: {
+      getUser: vi.fn(async () => ({ data: { user: { id: "auth-1" } } })),
+    },
   } as unknown as Awaited<ReturnType<typeof createClient>>);
 
   return { users, appointments, cashSessions };

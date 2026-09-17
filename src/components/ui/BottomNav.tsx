@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Wallet, Calendar, MoreHorizontal, type LucideIcon } from "lucide-react";
+import {
+  Home,
+  Wallet,
+  Calendar,
+  MoreHorizontal,
+  type LucideIcon,
+} from "lucide-react";
 
 interface NavItem {
   href: string;
@@ -27,11 +33,10 @@ export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 border-t border-line bg-background">
+    <nav className="border-line bg-background fixed inset-x-0 bottom-0 border-t">
       <ul className="flex">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-          const isActive =
-            pathname === href || pathname.startsWith(`${href}/`);
+          const isActive = pathname === href || pathname.startsWith(`${href}/`);
 
           return (
             <li key={href} className="flex-1">

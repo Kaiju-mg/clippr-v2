@@ -5,8 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Service } from "@/types";
 
 export type ServiceActionResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string };
+  { success: true; data: T } | { success: false; error: string };
 
 export interface ServicePayload {
   name: string;

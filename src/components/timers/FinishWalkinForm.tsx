@@ -38,8 +38,8 @@ export function FinishWalkinForm({
 
   if (!cashSessionId) {
     return (
-      <div className="mt-3 flex flex-col gap-3 rounded-lg bg-background p-3.5">
-        <p role="alert" className="text-sm text-danger">
+      <div className="bg-background mt-3 flex flex-col gap-3 rounded-lg p-3.5">
+        <p role="alert" className="text-danger text-sm">
           Debes abrir tu caja diaria antes de cobrar un corte.
         </p>
         <div className="flex justify-end gap-2">
@@ -88,12 +88,12 @@ export function FinishWalkinForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="mt-3 flex flex-col gap-3 rounded-lg bg-background p-3.5"
+      className="bg-background mt-3 flex flex-col gap-3 rounded-lg p-3.5"
     >
       <div className="flex flex-col gap-1">
         <label
           htmlFor={`service-${timer.id}`}
-          className="text-sm font-medium text-muted"
+          className="text-muted text-sm font-medium"
         >
           Servicio
         </label>
@@ -101,7 +101,7 @@ export function FinishWalkinForm({
           id={`service-${timer.id}`}
           value={serviceId}
           onChange={(event) => setServiceId(event.target.value)}
-          className="rounded border border-line bg-background px-3 py-2 text-foreground"
+          className="border-line bg-background text-foreground rounded border px-3 py-2"
           required
           disabled={services.length === 0}
         >
@@ -126,7 +126,7 @@ export function FinishWalkinForm({
       />
 
       {error && (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-danger text-sm">
           {error}
         </p>
       )}

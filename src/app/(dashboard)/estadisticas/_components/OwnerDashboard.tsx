@@ -29,10 +29,7 @@ export function OwnerDashboard({ stats, range }: OwnerDashboardProps) {
   const conActividad = stats.leaderboard.filter(
     (member) => member.cuts > 0 || member.income > 0,
   );
-  const maxIncome = Math.max(
-    1,
-    ...conActividad.map((member) => member.income),
-  );
+  const maxIncome = Math.max(1, ...conActividad.map((member) => member.income));
 
   return (
     <div className="flex flex-col gap-6 p-4">
@@ -40,7 +37,7 @@ export function OwnerDashboard({ stats, range }: OwnerDashboardProps) {
         <h1 className="font-display text-xl font-semibold tracking-tight">
           Estadísticas
         </h1>
-        <p className="text-sm text-muted">Tu barbería, de un vistazo.</p>
+        <p className="text-muted text-sm">Tu barbería, de un vistazo.</p>
       </header>
 
       <nav className="flex gap-2" aria-label="Rango de fechas">
@@ -62,10 +59,7 @@ export function OwnerDashboard({ stats, range }: OwnerDashboardProps) {
       </nav>
 
       <div className="grid grid-cols-2 gap-3">
-        <StatCard
-          label="Ingresos"
-          value={formatGuaranies(stats.totalIncome)}
-        />
+        <StatCard label="Ingresos" value={formatGuaranies(stats.totalIncome)} />
         <StatCard label="Cortes" value={String(stats.totalCuts)} />
         <StatCard
           label="Promedio diario"
@@ -84,10 +78,10 @@ export function OwnerDashboard({ stats, range }: OwnerDashboardProps) {
       </div>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium text-muted">Equipo</h2>
+        <h2 className="text-muted text-sm font-medium">Equipo</h2>
 
         {conActividad.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted">
+          <p className="text-muted py-6 text-center text-sm">
             No hay actividad en este periodo.
           </p>
         ) : (
@@ -95,7 +89,7 @@ export function OwnerDashboard({ stats, range }: OwnerDashboardProps) {
             {conActividad.map((member) => (
               <li
                 key={member.userId}
-                className="flex flex-col gap-1.5 border-b border-line py-3 last:border-b-0"
+                className="border-line flex flex-col gap-1.5 border-b py-3 last:border-b-0"
               >
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="text-[15px]">{member.name}</span>
@@ -103,15 +97,15 @@ export function OwnerDashboard({ stats, range }: OwnerDashboardProps) {
                     {formatGuaranies(member.income)}
                   </span>
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
+                <div className="bg-surface-2 h-1.5 overflow-hidden rounded-full">
                   <div
-                    className="h-full rounded-full bg-accent"
+                    className="bg-accent h-full rounded-full"
                     style={{
                       width: `${Math.round((member.income / maxIncome) * 100)}%`,
                     }}
                   />
                 </div>
-                <span className="text-xs text-muted tabular-nums">
+                <span className="text-muted text-xs tabular-nums">
                   {member.cuts} {member.cuts === 1 ? "corte" : "cortes"}
                 </span>
               </li>
