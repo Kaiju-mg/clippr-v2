@@ -1323,3 +1323,24 @@ OpenNext (`.open-next/`), que es otra capa que puede fallar distinto que
 `next start`. Las variables `NEXT_PUBLIC_*` se incrustan al compilar (salen
 de `.env.local`); `SUPABASE_SERVICE_ROLE_KEY` va como secreto del Worker
 (`wrangler secret put`), y en local en `.dev.vars` (ignorado por git).
+
+## 2026-10-03 — Campos de formulario con etiqueta flotante
+Elegido: `Input` y el nuevo `Select` (`src/components/ui/`) con etiqueta
+flotante: caja de 58 px, borde `--line-strong` (token nuevo, en los dos
+temas), radio de 14 px y, al escribir, borde `accent-ink` con halo. El
+nombre del campo vive adentro y sube achicado cuando hay valor o foco.
+`Input` acepta `prefix` ("Gs." en el monto de caja). Los tres `<select>`
+sueltos (agenda, venta, nivel del barbero) y los campos escritos a mano de
+login, registro y monto de caja pasaron a estos componentes.
+Descartado: contorno simple, relleno, etiqueta adentro tipo cubo y línea
+inferior (las cinco opciones del muestrario "Campos de Clippr", Artifact
+del 2026-10-03). El usuario eligió la flotante.
+Por qué: los campos de antes medían 40 px (incómodos para el pulgar), casi
+sin redondeo frente a los 20 px de los cubos y sin foco visible de marca.
+La flotante es compacta (el nombre no ocupa una línea aparte).
+Costo: depende de `:placeholder-shown`, así que todo `Input` lleva un
+placeholder (un espacio si no se pasa uno); los ejemplos tipo "Ej. Juan
+Pérez" quedan invisibles hasta tocar el campo. El orden de los variantes de
+Tailwind importa (`peer-placeholder-shown` antes que `peer-autofill` y
+`peer-focus`, verificado en el CSS compilado). El monto grande de abrir caja
+(`OpenCashView`) no cambia: es un caso aparte, a propósito.

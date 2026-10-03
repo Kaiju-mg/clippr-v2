@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { scheduleAppointmentAction } from "@/actions/agenda.actions";
 import { formatGuaranies } from "@/lib/utils";
@@ -78,32 +79,24 @@ export function ScheduleInlineForm({
         required
       />
 
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor="schedule-service"
-          className="text-muted text-sm font-medium"
-        >
-          Servicio
-        </label>
-        <select
-          id="schedule-service"
-          value={serviceId}
-          onChange={(event) => setServiceId(event.target.value)}
-          className="border-line bg-background text-foreground rounded border px-3 py-2"
-          required
-          disabled={services.length === 0}
-        >
-          {services.length === 0 ? (
-            <option value="">No hay servicios activos</option>
-          ) : (
-            services.map((service) => (
-              <option key={service.id} value={service.id}>
-                {service.name} — {formatGuaranies(service.price)}
-              </option>
-            ))
-          )}
-        </select>
-      </div>
+      <Select
+        id="schedule-service"
+        label="Servicio"
+        value={serviceId}
+        onChange={(event) => setServiceId(event.target.value)}
+        required
+        disabled={services.length === 0}
+      >
+        {services.length === 0 ? (
+          <option value="">No hay servicios activos</option>
+        ) : (
+          services.map((service) => (
+            <option key={service.id} value={service.id}>
+              {service.name} — {formatGuaranies(service.price)}
+            </option>
+          ))
+        )}
+      </Select>
 
       <Input
         id="schedule-time"

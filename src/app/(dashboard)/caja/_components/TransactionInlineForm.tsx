@@ -64,24 +64,18 @@ export function TransactionInlineForm({
         {type === "expense" ? "Nuevo egreso" : "Nuevo ingreso"}
       </p>
 
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor="transaction-amount"
-          className="text-muted text-sm font-medium"
-        >
-          Monto (Gs.)
-        </label>
-        <input
-          id="transaction-amount"
-          type="text"
-          inputMode="numeric"
-          required
-          value={amount.formatted}
-          onChange={amount.handleChange}
-          placeholder="0"
-          className="border-line bg-background text-foreground rounded border px-3 py-2 tabular-nums"
-        />
-      </div>
+      <Input
+        id="transaction-amount"
+        label="Monto"
+        prefix="Gs."
+        type="text"
+        inputMode="numeric"
+        required
+        value={amount.formatted}
+        onChange={amount.handleChange}
+        placeholder="0"
+        className="font-semibold tabular-nums"
+      />
 
       <Input
         id="transaction-description"

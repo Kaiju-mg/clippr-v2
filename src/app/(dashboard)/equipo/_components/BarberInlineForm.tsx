@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { createBarberAction, updateBarberAction } from "@/actions/team.actions";
 import type { User, UserLevel } from "@/types";
@@ -151,26 +152,18 @@ export function BarberInlineForm({
         </>
       )}
 
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={`barber-level-${fieldPrefix}`}
-          className="text-muted text-sm font-medium"
-        >
-          Nivel
-        </label>
-        <select
-          id={`barber-level-${fieldPrefix}`}
-          value={level}
-          onChange={(event) => setLevel(event.target.value as UserLevel)}
-          className="border-line bg-background text-foreground rounded border px-3 py-2"
-        >
-          {NIVELES.map((nivel) => (
-            <option key={nivel.value} value={nivel.value}>
-              {nivel.label}
-            </option>
-          ))}
-        </select>
-      </div>
+      <Select
+        id={`barber-level-${fieldPrefix}`}
+        label="Nivel"
+        value={level}
+        onChange={(event) => setLevel(event.target.value as UserLevel)}
+      >
+        {NIVELES.map((nivel) => (
+          <option key={nivel.value} value={nivel.value}>
+            {nivel.label}
+          </option>
+        ))}
+      </Select>
 
       <Input
         id={`barber-commission-${fieldPrefix}`}

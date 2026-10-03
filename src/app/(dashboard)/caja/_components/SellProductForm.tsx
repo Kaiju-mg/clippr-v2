@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { sellProductAction } from "@/actions/cash.actions";
 import { formatGuaranies } from "@/lib/utils";
 import type { Product } from "@/types";
@@ -71,36 +72,28 @@ export function SellProductForm({ products, onClose }: SellProductFormProps) {
         Vender producto
       </p>
 
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor="sell-product"
-          className="text-muted text-sm font-medium"
-        >
-          Producto
-        </label>
-        <select
-          id="sell-product"
-          value={productId}
-          onChange={(event) => setProductId(event.target.value)}
-          className="border-line bg-background text-foreground rounded border px-3 py-2"
-          required
-        >
-          <option value="" disabled>
-            Elegí un producto
+      <Select
+        id="sell-product"
+        label="Producto"
+        value={productId}
+        onChange={(event) => setProductId(event.target.value)}
+        required
+      >
+        <option value="" disabled>
+          Elegí un producto
+        </option>
+        {products.map((product) => (
+          <option
+            key={product.id}
+            value={product.id}
+            disabled={product.stock === 0}
+          >
+            {`${product.name} — ${formatGuaranies(product.price)} (${
+              product.stock === 0 ? "sin stock" : `quedan ${product.stock}`
+            })`}
           </option>
-          {products.map((product) => (
-            <option
-              key={product.id}
-              value={product.id}
-              disabled={product.stock === 0}
-            >
-              {`${product.name} — ${formatGuaranies(product.price)} (${
-                product.stock === 0 ? "sin stock" : `quedan ${product.stock}`
-              })`}
-            </option>
-          ))}
-        </select>
-      </div>
+        ))}
+      </Select>
 
       <Input
         id="sell-quantity"
