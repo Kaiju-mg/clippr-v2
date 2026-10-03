@@ -106,7 +106,9 @@ export function StreakCelebration() {
               {value}
             </span>
             <span className="text-muted text-[13px] font-semibold">
-              {value === 1 ? "día seguido" : "días seguidos"}
+              {/* "de racha" y no "seguidos": con el día de gracia, una racha de 10
+                puede no ser 10 días corridos (ver docs/deuda-tecnica.md). */}
+              {value === 1 ? "día de racha" : "días de racha"}
             </span>
           </div>
         </div>
