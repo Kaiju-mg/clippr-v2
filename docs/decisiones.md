@@ -1299,3 +1299,27 @@ que todo lo exportado ahí sea una función async). Y descartar **no pierde
 plata**: si el turno sigue agendado se cobra desde `/agenda`.
 Costo: el barbero puede descartar un temporizador tras un error de red y
 perder el cronómetro (no el cobro). A cambio, nunca queda trabado.
+
+## 2026-10-03 — Hosting en Cloudflare Workers (OpenNext), no en Vercel
+Elegido: Cloudflare Workers con el adaptador `@opennextjs/cloudflare`
+(`wrangler.jsonc`, `open-next.config.ts`, `npm run deploy`). Para probar se
+arranca en el plan gratis; para operar con clientes que pagan, el plan de
+US$5/mes.
+Descartado: Vercel. El plan Hobby prohíbe el uso comercial (un SaaS como
+Clippr lo es) y el Pro cuesta US$20 por usuario por mes, contra US$5 de
+Cloudflare con uso comercial permitido.
+Por qué: presupuesto (`docs/producto.md`). La app no tiene nada que choque
+con Workers: sin `middleware.ts`, sin `runtime = "edge"`, sin `next/image`,
+y lo único de Node es `node:crypto` (`passwords.ts`), que anda con
+`nodejs_compat`. Sin caché incremental en R2: todas las pantallas son
+dinámicas (leen la cookie de sesión).
+Costo: el plan gratis corta cada pedido a los **10 ms de CPU**, y no se
+sabe todavía si las pantallas de Next entran ahí — `observability` está
+prendido en `wrangler.jsonc` para medirlo en el dashboard antes de decidir
+el plan. El límite de 100.000 pedidos por día es **por cuenta**, no por
+Worker: se comparte con cualquier otro proyecto de la misma cuenta. Además
+`next build` corre igual que antes, pero lo que se sube es el bundle de
+OpenNext (`.open-next/`), que es otra capa que puede fallar distinto que
+`next start`. Las variables `NEXT_PUBLIC_*` se incrustan al compilar (salen
+de `.env.local`); `SUPABASE_SERVICE_ROLE_KEY` va como secreto del Worker
+(`wrangler secret put`), y en local en `.dev.vars` (ignorado por git).

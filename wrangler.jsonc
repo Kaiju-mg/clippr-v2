@@ -1,0 +1,24 @@
+// Configuración del Worker de Cloudflare (adaptador OpenNext).
+// Ver docs/decisiones.md 2026-10-03 (hosting en Cloudflare Workers).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "main": ".open-next/worker.js",
+  "name": "clippr",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS",
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "clippr",
+    },
+  ],
+  // Métricas de CPU por pedido en el dashboard: es el dato que decide si el
+  // plan gratis (10 ms por pedido) alcanza.
+  "observability": {
+    "enabled": true,
+  },
+}
