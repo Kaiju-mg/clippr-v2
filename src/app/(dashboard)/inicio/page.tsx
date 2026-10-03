@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Scissors, Flame } from "lucide-react";
+import { Scissors } from "lucide-react";
 import { getAgendaAction } from "@/actions/agenda.actions";
 import { getCurrentCashSessionAction } from "@/actions/cash.actions";
 import { getServicesAction } from "@/actions/service.actions";
@@ -8,6 +8,7 @@ import { StatTile } from "@/components/ui/Tile";
 import { TimerList } from "@/components/timers/TimerList";
 import { businessToday, formatBusinessDateLabel } from "@/lib/dates";
 import { createClient } from "@/lib/supabase/server";
+import { StreakTile, StreakWarning } from "./_components/StreakTile";
 import { UpcomingAppointments } from "./_components/UpcomingAppointments";
 
 /** "Eduardo Villalba" → "EV". Sin nombre, la inicial de "Barbero". */
@@ -98,13 +99,11 @@ export default async function InicioPage() {
           Compactos y sin `aspect-square`: cuadrados se comían media
           pantalla y el CTA quedaba abajo del pliegue. */}
       <div className="grid grid-cols-2 gap-3">
-        <StatTile
-          href="/estadisticas"
-          compact
-          icon={<Flame size={16} strokeWidth={1.5} />}
-          value={stats ? String(stats.streakCount) : undefined}
-          label={
-            stats && stats.streakCount === 1 ? "Día de racha" : "Días de racha"
+        <StreakTile
+          streak={
+            stats
+              ? { count: stats.streakCount, status: stats.streakStatus }
+              : undefined
           }
         />
         <StatTile
@@ -117,6 +116,10 @@ export default async function InicioPage() {
           }
         />
       </div>
+
+      {stats?.streakStatus === "en_peligro" && (
+        <StreakWarning count={stats.streakCount} />
+      )}
 
       {/* Todos los servicios, no sólo los activos: `TimerList` filtra los
           activos para el walk-in, pero un turno agendado en curso puede

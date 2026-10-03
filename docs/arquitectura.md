@@ -773,6 +773,47 @@ el proyecto real, `/inicio` sirve 200 sin errores después del arreglo.
 **Falta** el recorrido a mano del flujo completo con sesión iniciada
 (empezar, F5 con el timer corriendo, cobrar y verificar la `transaction`).
 
+### Poste de la racha (implementado)
+
+Animación de la racha, elegida en dos Artifacts ("Animaciones de la racha"
+y "Poste de la racha", 2026-10-03). Es la única parte de Clippr que rompe
+el minimalismo a propósito. **Sin migraciones.**
+
+- **`BarberPole`** (`src/components/ui/BarberPole.tsx` + CSS module): poste
+  de barbería en CSS puro, sin librerías, en tres tamaños (`sm`/`md`/`lg`).
+  Gira mientras la racha está viva (`activa`), se frena en el día de
+  gracia (`en_peligro`) y queda gris si se apagó (`apagada`). `fast` es el
+  giro rápido con brillo del momento de sumar un día. Tres niveles por días
+  de racha: acero (0–6), oro (7–29, tapas y bola doradas) y encendido (30+,
+  la bola se prende). Con "reducir movimiento" queda quieto.
+- **Estado de la racha** (`streakStatus` en `src/lib/streaks.ts`): se deriva,
+  no se guarda. `users.streak_count` sólo se recalcula al cerrar una caja,
+  así que `getBarberStatsAction` busca la última caja cerrada con un cobro
+  (`lastWorkedDate`, `src/lib/streak-days.ts`) y decide: hoy o ayer →
+  activa; anteayer → en peligro (cerrar hoy todavía suma, misma regla que
+  `nextStreakCount`); antes → apagada, y `streakCount` vuelve **0** aunque
+  la base guarde el número viejo. Si esa consulta falla, la racha se
+  muestra viva con el número guardado: el poste nunca alarma por un error
+  de red.
+- **/inicio:** `StreakTile` reemplaza al `StatTile` de la llama (poste chico
+  al lado del número). En el día de gracia el cubo late en naranja
+  (`--warning`, token nuevo) y aparece `StreakWarning` debajo de los cubos.
+- **/estadisticas:** `StreakPanel`, cubo grande arriba de todo con el poste,
+  el nombre del nivel, cuánto falta para el siguiente y la escalera de
+  niveles. El chip de llama que estaba dentro del cubo del nivel se fue.
+- **Cierre de caja:** `closeCashSessionAction` devuelve
+  `{ session, streak: { previous, current } | null }` (null si la caja no
+  tuvo cobros o la racha no se pudo guardar). Si subió, `CloseCashButton`
+  la pasa a `useStreakCelebration` (Zustand, sin persistencia) y
+  `StreakCelebration`, montada en `(dashboard)/layout.tsx`, sube una hoja con
+  el poste girando rápido y el número nuevo cayendo como un sello. Vive en
+  el layout porque `/caja` se vuelve a renderizar como "Abrir caja" apenas
+  se cierra y el botón se desmonta.
+- **Prueba:** Vitest (lógica pura, acciones con Supabase mockeado y los
+  componentes con Testing Library: 263 tests) y capturas de los componentes
+  reales en los dos temas con una página temporal, ya borrada. **No se
+  probó con sesión iniciada** contra el proyecto real.
+
 ## Modelo de Datos
 
 Entidades principales enfocadas en resolver el modelo Multi-Tenant, los turnos y la gestión individual de caja:

@@ -39,6 +39,7 @@
   --accent-contrast: #ffffff;
   --accent-ink: #1f3a5f;
   --success: #2f6b4f;
+  --warning: #b9651b;
   --danger: #a83b32;
 }
 
@@ -55,6 +56,7 @@
   --accent-contrast: #ffffff;
   --accent-ink: #8fb4dd;
   --success: #7fd0a4;
+  --warning: #f2b06b;
   --danger: #f0938a;
 }
 
@@ -70,12 +72,16 @@
   --color-accent-contrast: var(--accent-contrast);
   --color-accent-ink: var(--accent-ink);
   --color-success: var(--success);
+  --color-warning: var(--warning);
   --color-danger: var(--danger);
   --font-sans: var(--font-inter);
   --font-display: var(--font-inter);
   /* Radio del "cubo" de la grilla bento. Vive acá para cambiar el redondeo
      de las cuatro pantallas desde un solo lugar. */
   --radius-tile: 1.25rem;
+  /* Latido del cubo de racha en el día de gracia (ver StreakTile). */
+  --animate-streak-beat: streak-beat 1.8s ease-in-out infinite;
+  --animate-streak-stamp: streak-stamp 0.55s cubic-bezier(0.3, 1.8, 0.5, 1);
 }
 
 body {
@@ -88,4 +94,25 @@ body {
     "Segoe UI",
     Roboto,
     sans-serif;
+}
+
+@keyframes streak-beat {
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 25%, transparent);
+  }
+}
+
+/* El número nuevo de la racha "cae como un sello" (StreakCelebration). */
+@keyframes streak-stamp {
+  0% {
+    transform: scale(2.4) rotate(-10deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(0.9) rotate(2deg);
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+  }
 }

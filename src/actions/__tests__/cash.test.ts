@@ -386,7 +386,7 @@ describe("closeCashSessionAction", () => {
       }),
     );
     expect(builder.eq).toHaveBeenCalledWith("id", "cs1");
-    expect(result).toEqual({ success: true, data: closed });
+    expect(result.success && result.data.session).toEqual(closed);
   });
 
   it("no cierra la caja si no puede leer las transacciones", async () => {

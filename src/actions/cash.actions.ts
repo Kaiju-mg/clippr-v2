@@ -7,6 +7,10 @@ import { businessDateOf, businessRangeUtc, shiftDateISO } from "@/lib/dates";
 import { LEVEL_WINDOW_DAYS, levelForCuts } from "@/lib/levels";
 import { nextStreakCount } from "@/lib/streaks";
 import {
+  businessDatesWithIncome,
+  CAJAS_CERRADAS_A_REVISAR,
+} from "@/lib/streak-days";
+import {
   CAJA_INVALIDA,
   CANTIDAD_INVALIDA,
   PRODUCTO_INVALIDO,
@@ -18,6 +22,18 @@ import type { CashSession, Transaction, TransactionType } from "@/types";
 
 export type CashActionResult<T> =
   { success: true; data: T } | { success: false; error: string };
+
+/** Racha antes y después de un cierre, tal como la ve el barbero. */
+export interface StreakChange {
+  previous: number;
+  current: number;
+}
+
+export interface CloseCashResult {
+  session: CashSession;
+  /** null si la racha no se tocó (caja sin cobros) o no se pudo guardar. */
+  streak: StreakChange | null;
+}
 
 const MENSAJE_ERROR_GENERICO = "Algo salió mal. Intentá de nuevo.";
 const MENSAJE_CAJA_YA_ABIERTA = "Ya tenés una caja abierta.";
@@ -105,13 +121,6 @@ async function computeBalance(
 }
 
 /**
- * Cuántas cajas cerradas hacia atrás se miran para encontrar la última
- * jornada válida. Con un día de gracia de 2 días alcanza de sobra: sirve
- * para descartar varias cajas del mismo día sin traer el historial entero.
- */
-const CAJAS_CERRADAS_A_REVISAR = 10;
-
-/**
  * Actualiza `streak_count` y `level` del barbero al cerrar una caja con
  * actividad (spec 08, sección 3). Toda esta lógica vive en el servidor: en
  * la v1 la racha se calculaba en el frontend y cualquiera podía inflarla
@@ -127,13 +136,14 @@ const CAJAS_CERRADAS_A_REVISAR = 10;
  *
  * No devuelve error: si algo falla acá, la caja ya quedó cerrada y correcta.
  * Se loguea y se sigue — perder un punto de racha no justifica hacerle creer
- * al barbero que el cierre no se guardó.
+ * al barbero que el cierre no se guardó. Devuelve de cuánto a cuánto pasó la
+ * racha (para la hoja del poste en /caja), o null si no se tocó o falló.
  */
 async function updateStreakAndLevel(
   supabase: SupabaseServerClient,
   closedSession: CashSession,
   incomeOfSession: number,
-): Promise<void> {
+): Promise<StreakChange | null> {
   const { data: profile, error: profileError } = await supabase
     .from("users")
     .select("id, streak_count, level")
@@ -145,7 +155,7 @@ async function updateStreakAndLevel(
       "updateStreakAndLevel (users):",
       profileError?.message ?? "perfil no encontrado",
     );
-    return;
+    return null;
   }
 
   const today = businessDateOf(new Date(closedSession.start_time));
@@ -166,7 +176,7 @@ async function updateStreakAndLevel(
 
   if (cutsError) {
     console.error("updateStreakAndLevel (appointments):", cutsError.message);
-    return;
+    return null;
   }
 
   const level = levelForCuts(windowCuts ?? 0);
@@ -175,7 +185,7 @@ async function updateStreakAndLevel(
   // rompe la racha, pero el nivel igual se recalcula.
   if (incomeOfSession <= 0) {
     await applyStreakAndLevel(profile.id, profile.streak_count, level);
-    return;
+    return null;
   }
 
   const { data: previous, error: previousError } = await supabase
@@ -192,7 +202,7 @@ async function updateStreakAndLevel(
       "updateStreakAndLevel (cash_sessions):",
       previousError.message,
     );
-    return;
+    return null;
   }
 
   const previousSessions = (previous ?? []) as {
@@ -205,7 +215,7 @@ async function updateStreakAndLevel(
     previousSessions,
   );
 
-  if (qualifyingDates === null) return;
+  if (qualifyingDates === null) return null;
 
   const sameDayAlreadyCounted = qualifyingDates.includes(today);
   const earlierDates = qualifyingDates.filter((date) => date < today);
@@ -221,47 +231,22 @@ async function updateStreakAndLevel(
     sameDayAlreadyCounted,
   );
 
-  await applyStreakAndLevel(profile.id, streak, level);
-}
+  const saved = await applyStreakAndLevel(profile.id, streak, level);
+  // Si no se guardó, no se festeja: la hoja del poste mostraría un número
+  // que la base no tiene.
+  if (!saved) return null;
 
-/**
- * Días del negocio (sin repetir) de las cajas que tuvieron al menos un
- * ingreso. Una sola consulta para todas las cajas, en vez de una por caja.
- * Devuelve null si la consulta falla.
- */
-async function businessDatesWithIncome(
-  supabase: SupabaseServerClient,
-  sessions: { id: string; start_time: string }[],
-): Promise<string[] | null> {
-  if (sessions.length === 0) return [];
+  // "Antes" es lo que el barbero veía: si subió, el número anterior; si la
+  // racha se había cortado y vuelve a 1, veía 0 (ver `visibleStreak`); si
+  // no cambió (segunda caja del día), el mismo.
+  const previousVisible =
+    streak > profile.streak_count
+      ? streak - 1
+      : streak === 1 && profile.streak_count !== 1
+        ? 0
+        : streak;
 
-  const { data, error } = await supabase
-    .from("transactions")
-    .select("cash_session_id")
-    .eq("type", "income")
-    .in(
-      "cash_session_id",
-      sessions.map((session) => session.id),
-    );
-
-  if (error) {
-    console.error("businessDatesWithIncome:", error.message);
-    return null;
-  }
-
-  const withIncome = new Set(
-    ((data ?? []) as { cash_session_id: string }[]).map(
-      (row) => row.cash_session_id,
-    ),
-  );
-
-  return [
-    ...new Set(
-      sessions
-        .filter((session) => withIncome.has(session.id))
-        .map((session) => businessDateOf(new Date(session.start_time))),
-    ),
-  ];
+  return { previous: previousVisible, current: streak };
 }
 
 /**
@@ -287,7 +272,7 @@ async function applyStreakAndLevel(
   userId: string,
   streakCount: number,
   level: string,
-): Promise<void> {
+): Promise<boolean> {
   try {
     const { error } = await createAdminClient()
       .from("users")
@@ -296,9 +281,12 @@ async function applyStreakAndLevel(
 
     if (error) {
       console.error("applyStreakAndLevel:", error.message);
+      return false;
     }
+    return true;
   } catch (error) {
     console.error("applyStreakAndLevel:", error);
+    return false;
   }
 }
 
@@ -464,7 +452,7 @@ export async function openCashSessionAction(
  */
 export async function closeCashSessionAction(
   sessionId: string,
-): Promise<CashActionResult<CashSession>> {
+): Promise<CashActionResult<CloseCashResult>> {
   const supabase = await createClient();
 
   const { data: session, error: fetchError } = await supabase
@@ -517,12 +505,12 @@ export async function closeCashSessionAction(
 
   // Gamificación después del cierre, nunca antes: si la racha fallara, la
   // caja ya está cerrada con su saldo correcto.
-  await updateStreakAndLevel(supabase, closed, balance.income);
+  const streak = await updateStreakAndLevel(supabase, closed, balance.income);
 
   revalidatePath("/caja");
   revalidatePath("/inicio");
   revalidatePath("/estadisticas");
-  return { success: true, data: closed };
+  return { success: true, data: { session: closed, streak } };
 }
 
 /**

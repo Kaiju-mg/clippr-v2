@@ -1344,3 +1344,39 @@ Pérez" quedan invisibles hasta tocar el campo. El orden de los variantes de
 Tailwind importa (`peer-placeholder-shown` antes que `peer-autofill` y
 `peer-focus`, verificado en el CSS compilado). El monto grande de abrir caja
 (`OpenCashView`) no cambia: es un caso aparte, a propósito.
+
+## 2026-10-03 — La racha es un poste de barbería y rompe el minimalismo
+Elegido: el poste de barbería (`BarberPole`) como forma visual de la racha
+en /inicio, /estadisticas y el cierre de caja, con tres estados (gira,
+frenado, gris) y tres niveles (acero, oro, encendido). Es la única pieza de
+la app con colores propios (rojo, blanco y el azul tinta) y movimiento
+continuo.
+Descartado: llama viva, contador con chispas, semana encendida, pantalla de
+hito con confeti y llama que se apaga (las otras cinco del Artifact
+"Animaciones de la racha"). El usuario eligió el poste "completamente" y
+pidió que la racha rompa la regla del minimalismo.
+Por qué: es de barbería, ninguna otra app lo tiene, y usa el color de la
+marca. Que el poste se *frene* en el día de gracia explica sin texto la
+regla que hasta ahora nadie entendía.
+Costo: una animación que no para en /inicio (chica, 12 px de ancho, y quieta
+con "reducir movimiento"). El estado de la racha se deriva en cada carga
+de /inicio y /estadisticas con dos consultas más (últimas cajas cerradas y
+sus cobros) en vez de guardarse; a cambio, un barbero que dejó de cerrar
+caja ve 0 y no su número viejo. Los niveles del poste (7 y 30 días) están
+en `src/lib/streaks.ts`, como los de la liga en `levels.ts`: son reglas de
+juego, no precios (regla 6).
+
+## 2026-10-03 — La hoja del poste vive en el layout, con un store
+Elegido: `StreakCelebration` montada en `(dashboard)/layout.tsx`, alimentada
+por un store de Zustand (`useStreakCelebration`) que llena
+`CloseCashButton` cuando `closeCashSessionAction` devuelve que la racha
+subió.
+Descartado: estado local en `CloseCashButton`, y pasar el festejo por la URL
+(`/caja?racha=12-13`).
+Por qué: apenas se cierra la caja, la revalidación vuelve a renderizar /caja
+como "Abrir caja" y el botón se desmonta; con estado local la hoja
+desaparecería en el mismo instante. La URL dejaría que cualquiera se
+"festeje" una racha falsa escribiéndola a mano, y quedaría en el historial.
+Costo: un store más (sin `persist`: el festejo no sobrevive un F5, a
+propósito) y que `closeCashSessionAction` cambie de forma: ahora devuelve
+`{ session, streak }` en vez de la caja sola.

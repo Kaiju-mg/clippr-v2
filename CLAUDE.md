@@ -57,13 +57,14 @@ src/app/                 rutas (App Router)
   (dashboard)/           layout (guard de sesión + BottomNav) + inicio, caja,
                           agenda, servicios, productos, equipo, mas,
                           estadisticas
-src/components/          ui/ (BottomNav, Tile — el cubo bento, ThemeSwitch) · forms/ · timers/
+src/components/          ui/ (BottomNav, Tile — el cubo bento, ThemeSwitch, Input/Select,
+                          BarberPole) · forms/ · timers/ · streak/ (hoja del poste)
 src/lib/supabase/        client.ts (browser)  ·  server.ts (Server Components/Actions/Route Handlers)
 src/lib/utils.ts         formatGuaranies, cn
 src/lib/dates.ts         fechas del negocio en America/Asuncion — usar siempre esto, nunca new Date() pelado para "qué día es" ni un Intl.DateTimeFormat propio para mostrar una fecha
 src/lib/theme.ts         cookie del tema claro/oscuro (la lee el layout raíz)
 src/actions/             Server Actions — toda mutación sensible va acá
-src/store/               Zustand (timerStore)
+src/store/               Zustand (timerStore, streakCelebrationStore)
 src/types/index.ts       tipos del modelo de datos
 ```
 
@@ -326,5 +327,27 @@ con un 500 — pasó, va con `?.` y tiene test; (3) el turno guarda la hora
 sirviendo 200 sin errores. **Pendiente:** el recorrido a mano del flujo
 completo con sesión iniciada. Ver `docs/arquitectura.md` sección "Empezar un
 turno desde /inicio" y `docs/decisiones.md` (2026-09-20).
+
+Hosting, campos y poste de la racha (2026-10-03, no son specs del
+backlog):
+
+- **Deploy en Cloudflare Workers** con OpenNext (`wrangler.jsonc`, Worker
+  `clippr-v2`, `npm run deploy`), plan gratis para probar. Publicado en
+  https://clippr-v2.sistemalety.workers.dev. `SUPABASE_SERVICE_ROLE_KEY` va
+  como secreto del Worker (`wrangler secret put`), en local en `.dev.vars`.
+  La raíz `/` redirige a `/inicio` y el `start_url` de la PWA también. Ver
+  `docs/decisiones.md` (Cloudflare en vez de Vercel).
+- **Campos con etiqueta flotante:** `Input` y `Select` nuevos en
+  `src/components/ui/`, token `--line-strong`. Login, registro y los tres
+  `<select>` sueltos pasaron a estos componentes.
+- **Poste de la racha:** `BarberPole` en /inicio (`StreakTile`),
+  /estadisticas (`StreakPanel`) y la hoja al cerrar la caja
+  (`StreakCelebration` en el layout). `closeCashSessionAction` ahora
+  devuelve `{ session, streak }`. El estado de la racha (viva / en peligro /
+  apagada) se deriva en `getBarberStatsAction`; con la racha apagada,
+  `streakCount` vuelve 0. Token `--warning`. **Sin migraciones.**
+  Verificado: lint, typecheck, 263 tests, build y capturas de los
+  componentes en los dos temas. **Pendiente:** verlo con sesión iniciada.
+  Ver `docs/arquitectura.md` sección "Poste de la racha".
 
 El resto (nada pendiente del backlog) sigue como estaba.

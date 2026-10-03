@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { BottomNav } from "@/components/ui/BottomNav";
+import { StreakCelebration } from "@/components/streak/StreakCelebration";
 
 /**
  * Sin barra superior a propósito (spec 05.5 en adelante): el nombre de la
@@ -23,6 +24,9 @@ export default async function DashboardLayout({
     <div className="bg-background min-h-screen">
       <main className="pb-16">{children}</main>
       <BottomNav />
+      {/* La hoja del poste al cerrar la caja: vive acá y no en /caja porque
+          esa pantalla se vuelve a renderizar apenas se cierra. */}
+      <StreakCelebration />
     </div>
   );
 }

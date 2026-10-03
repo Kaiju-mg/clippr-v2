@@ -1,0 +1,199 @@
+/*
+ * Poste de barbería de la racha (decisión del 2026-10-03). Es la única pieza
+ * de Clippr que rompe el minimalismo a propósito: tiene colores propios (el
+ * rojo y blanco del poste, más el azul tinta de la marca) que no cambian con
+ * el tema, porque es un objeto, no una superficie de la interfaz.
+ *
+ * Todo escala con dos variables: --u (ancho de una franja) y --w (ancho del
+ * vidrio). Las franjas van a -45°, así que el dibujo se repite en vertical
+ * cada 22u·√2 ≈ 31.113u; la animación corre exactamente ese tramo para que
+ * el giro no salte al reiniciar.
+ */
+
+.pole {
+  --u: 2px;
+  --w: 34px;
+  --h: 132px;
+  --speed: 2.6s;
+  --glow: rgba(214, 40, 40, 0.3);
+  display: inline-flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+}
+
+.sm {
+  --u: 1px;
+  --w: 12px;
+  --h: 46px;
+}
+
+.md {
+  --u: 2px;
+  --w: 34px;
+  --h: 132px;
+}
+
+.lg {
+  --u: 2.2px;
+  --w: 46px;
+  --h: 150px;
+}
+
+.ball {
+  position: relative;
+  z-index: 1;
+  width: calc(var(--w) * 0.55);
+  height: calc(var(--w) * 0.55);
+  margin-bottom: calc(var(--w) * -0.1);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff, #cfcabd 55%, #8f8a80);
+  transition:
+    background 0.4s,
+    box-shadow 0.4s;
+}
+
+.cap {
+  position: relative;
+  z-index: 1;
+  width: calc(var(--w) * 1.3);
+  height: calc(var(--w) * 0.32);
+  border-radius: calc(var(--w) * 0.16);
+  background: linear-gradient(180deg, #e3e0d8, #9e998e);
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.15);
+  transition: background 0.4s;
+}
+
+.glass {
+  position: relative;
+  width: var(--w);
+  height: var(--h);
+  overflow: hidden;
+  border-radius: 3px;
+  box-shadow:
+    inset calc(var(--w) * 0.15) 0 calc(var(--w) * 0.25)
+      rgba(255, 255, 255, 0.55),
+    inset calc(var(--w) * -0.2) 0 calc(var(--w) * 0.3) rgba(0, 0, 0, 0.2);
+  transition: box-shadow 0.4s;
+}
+
+.stripes {
+  position: absolute;
+  top: calc(var(--u) * -32);
+  right: 0;
+  bottom: calc(var(--u) * -32);
+  left: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    #d62828 0 calc(var(--u) * 6),
+    #ffffff calc(var(--u) * 6) calc(var(--u) * 11),
+    #1f3a5f calc(var(--u) * 11) calc(var(--u) * 17),
+    #ffffff calc(var(--u) * 17) calc(var(--u) * 22)
+  );
+  animation: spin var(--speed) linear infinite;
+  transition: filter 0.6s;
+}
+
+.shine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.4),
+    transparent 38%,
+    transparent 70%,
+    rgba(0, 0, 0, 0.18)
+  );
+}
+
+@keyframes spin {
+  from {
+    transform: translateY(calc(var(--u) * -31.113));
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* ---- Movimiento ---- */
+
+/* Al sumar un día: gira rápido y brilla. */
+.fast {
+  --speed: 0.32s;
+}
+
+.fast .glass,
+.encendido .glass {
+  box-shadow:
+    inset calc(var(--w) * 0.15) 0 calc(var(--w) * 0.25)
+      rgba(255, 255, 255, 0.55),
+    inset calc(var(--w) * -0.2) 0 calc(var(--w) * 0.3) rgba(0, 0, 0, 0.2),
+    0 0 calc(var(--w) * 0.7) var(--glow);
+}
+
+/* Día de gracia: frenado. */
+.paused .stripes {
+  animation-play-state: paused;
+}
+
+/* Racha apagada: gris y quieto. */
+.off .stripes {
+  animation-play-state: paused;
+  filter: grayscale(1) brightness(1.05) contrast(0.7);
+}
+
+.off .ball {
+  background: radial-gradient(circle at 35% 30%, #eee, #b9b6ae 55%, #7d7a73);
+}
+
+/* ---- Niveles: acero (base), oro (7+), encendido (30+) ---- */
+
+.oro .cap,
+.encendido .cap {
+  background: linear-gradient(180deg, #f7e3a1, #c9962f);
+}
+
+.oro .ball {
+  background: radial-gradient(circle at 35% 30%, #fff8dc, #f7e3a1 45%, #c9962f);
+}
+
+.encendido .ball {
+  background: radial-gradient(circle at 40% 35%, #ffffff, #ffe9a8 40%, #f2b13a);
+  box-shadow: 0 0 calc(var(--w) * 0.5) calc(var(--w) * 0.12)
+    rgba(255, 196, 70, 0.65);
+  animation: bulb 2.2s ease-in-out infinite;
+}
+
+/* Apagado manda sobre el nivel: un poste encendido sin racha no brilla. */
+.off.encendido .ball,
+.off.oro .ball {
+  background: radial-gradient(circle at 35% 30%, #eee, #b9b6ae 55%, #7d7a73);
+  box-shadow: none;
+  animation: none;
+}
+
+.off.oro .cap,
+.off.encendido .cap {
+  background: linear-gradient(180deg, #e3e0d8, #9e998e);
+}
+
+.off.encendido .glass {
+  box-shadow:
+    inset calc(var(--w) * 0.15) 0 calc(var(--w) * 0.25)
+      rgba(255, 255, 255, 0.55),
+    inset calc(var(--w) * -0.2) 0 calc(var(--w) * 0.3) rgba(0, 0, 0, 0.2);
+}
+
+@keyframes bulb {
+  50% {
+    box-shadow: 0 0 calc(var(--w) * 0.8) calc(var(--w) * 0.2)
+      rgba(255, 196, 70, 0.8);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stripes,
+  .encendido .ball {
+    animation: none;
+  }
+}

@@ -21,6 +21,7 @@ interface QueryBuilderMock {
   gte: ReturnType<typeof vi.fn>;
   lt: ReturnType<typeof vi.fn>;
   order: ReturnType<typeof vi.fn>;
+  limit: ReturnType<typeof vi.fn>;
   maybeSingle: ReturnType<typeof vi.fn>;
   then: (onfulfilled: (value: MockResult) => unknown) => Promise<unknown>;
 }
@@ -43,6 +44,7 @@ function createBuilder(...results: MockResult[]): QueryBuilderMock {
     gte: vi.fn(() => builder),
     lt: vi.fn(() => builder),
     order: vi.fn(() => builder),
+    limit: vi.fn(() => builder),
     maybeSingle: vi.fn(async () => next()),
     then: (onfulfilled) => Promise.resolve(next()).then(onfulfilled),
   };
@@ -231,6 +233,63 @@ describe("getBarberStatsAction", () => {
       success: false,
       error: "Algo salió mal. Intentá de nuevo.",
     });
+  });
+});
+
+describe("getBarberStatsAction — estado de la racha (poste)", () => {
+  /**
+   * cash_sessions se consulta dos veces: primero sumIncome (cajas del día,
+   * acá ninguna, así que no toca transactions) y después lastWorkedDate
+   * (últimas cajas cerradas). transactions sólo la usa lastWorkedDate.
+   */
+  function mockRacha(streak: number, ultimaCaja: string | null, falla = false) {
+    const cerradas = ultimaCaja ? [{ id: "cs-x", start_time: ultimaCaja }] : [];
+    mockSupabase({
+      users: createBuilder({
+        data: { ...PERFIL_BARBERO, streak_count: streak },
+        error: null,
+      }),
+      appointments: createBuilder({ count: 0, error: null }),
+      cash_sessions: createBuilder(
+        { data: [], error: null },
+        falla
+          ? { data: null, error: { message: "boom" } }
+          : { data: cerradas, error: null },
+      ),
+      transactions: createBuilder({
+        data: cerradas.map((caja) => ({ cash_session_id: caja.id })),
+        error: null,
+      }),
+    });
+  }
+
+  it("viva si la última caja con cobros fue ayer", async () => {
+    mockRacha(4, "2026-09-16T15:00:00.000Z");
+    const result = await getBarberStatsAction("2026-09-17");
+    expect(result.success && result.data.streakStatus).toBe("activa");
+    expect(result.success && result.data.streakCount).toBe(4);
+  });
+
+  it("en peligro si fue anteayer: hoy es el día de gracia", async () => {
+    mockRacha(4, "2026-09-15T15:00:00.000Z");
+    const result = await getBarberStatsAction("2026-09-17");
+    expect(result.success && result.data.streakStatus).toBe("en_peligro");
+    expect(result.success && result.data.streakCount).toBe(4);
+  });
+
+  it("apagada con más de un día salteado: muestra 0 aunque la base guarde 4", async () => {
+    mockRacha(4, "2026-09-13T15:00:00.000Z");
+    const result = await getBarberStatsAction("2026-09-17");
+    expect(result.success && result.data.streakStatus).toBe("apagada");
+    expect(result.success && result.data.streakCount).toBe(0);
+  });
+
+  it("si no se puede saber la última jornada, no alarma: queda viva", async () => {
+    mockRacha(4, null, true);
+    const result = await getBarberStatsAction("2026-09-17");
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.streakStatus).toBe("activa");
+    expect(result.success && result.data.streakCount).toBe(4);
   });
 });
 

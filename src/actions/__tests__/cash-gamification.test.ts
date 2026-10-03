@@ -333,7 +333,10 @@ describe("closeCashSessionAction — la gamificación no puede tumbar el cierre"
 
     const result = await closeCashSessionAction("cs-hoy");
 
-    expect(result).toEqual({ success: true, data: CERRADA });
+    expect(result).toEqual({
+      success: true,
+      data: { session: CERRADA, streak: null },
+    });
     expect(adminUsers.update).not.toHaveBeenCalled();
   });
 
@@ -343,7 +346,81 @@ describe("closeCashSessionAction — la gamificación no puede tumbar el cierre"
 
     const result = await closeCashSessionAction("cs-hoy");
 
-    expect(result).toEqual({ success: true, data: CERRADA });
+    expect(result).toEqual({
+      success: true,
+      data: { session: CERRADA, streak: null },
+    });
     expect(adminUsers.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("closeCashSessionAction — racha devuelta para la hoja del poste", () => {
+  it("devuelve de cuánto a cuánto subió la racha", async () => {
+    mockCierre({
+      streak: 5,
+      previous: [{ id: "cs-ayer", start_time: "2026-09-16T12:00:00.000Z" }],
+    });
+
+    const result = await closeCashSessionAction("cs-hoy");
+
+    expect(result.success && result.data.streak).toEqual({
+      previous: 5,
+      current: 6,
+    });
+  });
+
+  it("una racha cortada arranca de 0 a 1, no de 40 a 1", async () => {
+    mockCierre({
+      streak: 40,
+      previous: [{ id: "cs-viejo", start_time: "2026-09-14T12:00:00.000Z" }],
+    });
+
+    const result = await closeCashSessionAction("cs-hoy");
+
+    expect(result.success && result.data.streak).toEqual({
+      previous: 0,
+      current: 1,
+    });
+  });
+
+  it("la segunda caja del día devuelve la racha sin cambios", async () => {
+    mockCierre({
+      streak: 6,
+      previous: [
+        { id: "cs-manana", start_time: "2026-09-17T11:00:00.000Z" },
+        { id: "cs-ayer", start_time: "2026-09-16T12:00:00.000Z" },
+      ],
+    });
+
+    const result = await closeCashSessionAction("cs-hoy");
+
+    expect(result.success && result.data.streak).toEqual({
+      previous: 6,
+      current: 6,
+    });
+  });
+
+  it("una caja sin cobros no devuelve racha", async () => {
+    mockCierre({ streak: 5, income: 0 });
+
+    const result = await closeCashSessionAction("cs-hoy");
+
+    expect(result.success && result.data.streak).toBeNull();
+  });
+
+  it("si la racha no se pudo guardar, no se festeja", async () => {
+    const { adminUsers } = mockCierre({
+      streak: 5,
+      previous: [{ id: "cs-ayer", start_time: "2026-09-16T12:00:00.000Z" }],
+    });
+    adminUsers.eq.mockImplementation(async () => ({
+      data: null,
+      error: { message: "sin service role" },
+    }));
+
+    const result = await closeCashSessionAction("cs-hoy");
+
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.streak).toBeNull();
   });
 });

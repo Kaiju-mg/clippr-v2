@@ -13,6 +13,8 @@ import {
   levelProgress,
   type LevelProgress,
 } from "@/lib/levels";
+import { lastWorkedDate } from "@/lib/streak-days";
+import { streakStatus, visibleStreak, type StreakStatus } from "@/lib/streaks";
 import type { UserLevel } from "@/types";
 
 export type StatsActionResult<T> =
@@ -180,7 +182,13 @@ export interface BarberStats {
   completedCuts: number;
   /** Lo cobrado en el día pedido (cortes + ventas + ingresos manuales). */
   income: number;
+  /**
+   * Racha que se muestra: 0 si está apagada, aunque `users.streak_count`
+   * guarde todavía el número viejo (ver `streakStatus`).
+   */
   streakCount: number;
+  /** Viva, en el día de gracia o apagada: decide cómo se ve el poste. */
+  streakStatus: StreakStatus;
   level: UserLevel;
   /** Cortes de los últimos 30 días y avance hacia el nivel siguiente. */
   progress: LevelProgress;
@@ -225,6 +233,18 @@ export async function getBarberStatsAction(
     return { success: false, error: MENSAJE_ERROR_GENERICO };
   }
 
+  // Después del Promise.all y no adentro: pega sobre cash_sessions y
+  // transactions igual que sumIncome, y en serie el orden de las consultas
+  // es predecible. Si falla, la racha se muestra como viva con el número
+  // guardado: mejor no alarmar al barbero por un error de red.
+  const lastDate = await lastWorkedDate(supabase, profile.id);
+  const status: StreakStatus =
+    lastDate === undefined
+      ? profile.streak_count > 0
+        ? "activa"
+        : "apagada"
+      : streakStatus(profile.streak_count, lastDate, dateISO);
+
   return {
     success: true,
     data: {
@@ -234,7 +254,8 @@ export async function getBarberStatsAction(
       // /caja: la separación por categoría es para el ticket promedio del
       // dueño, no para este número.
       income: incomeByUser.get(profile.id)?.total ?? 0,
-      streakCount: profile.streak_count,
+      streakCount: visibleStreak(profile.streak_count, status),
+      streakStatus: status,
       level: profile.level,
       progress: levelProgress(windowCuts),
     },

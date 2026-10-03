@@ -56,3 +56,76 @@ export function nextStreakCount(
 
   return gap <= STREAK_GRACE_DAYS ? safeCurrent + 1 : 1;
 }
+
+export type StreakStatus = "activa" | "en_peligro" | "apagada";
+
+/**
+ * Cómo está la racha *hoy*, para mostrarla (el poste de barbería, decisión
+ * del 2026-10-03). Se deriva de la última jornada válida y no se guarda en
+ * ningún lado: `users.streak_count` sólo se recalcula al cerrar una caja, así
+ * que un barbero que no cierra hace una semana sigue teniendo su número
+ * viejo guardado aunque la racha ya esté perdida.
+ *
+ * - `activa`: la última jornada fue hoy o ayer. El poste gira.
+ * - `en_peligro`: fue anteayer — hoy es el día de gracia y cerrar una caja
+ *   con un cobro todavía la salva. El poste se frena.
+ * - `apagada`: más de un día salteado, o nunca hubo racha. Cerrar hoy la
+ *   arranca de nuevo en 1. El poste queda gris.
+ *
+ * @param lastWorkedDate día del negocio de la última caja *cerrada* con al
+ *   menos un ingreso (puede ser hoy), o null si no hay ninguna.
+ */
+export function streakStatus(
+  streakCount: number,
+  lastWorkedDate: string | null,
+  todayDate: string,
+): StreakStatus {
+  if (!(streakCount > 0) || !lastWorkedDate) return "apagada";
+
+  const gap = daysBetweenDateISO(lastWorkedDate, todayDate);
+  if (gap <= 1) return "activa";
+  return gap <= STREAK_GRACE_DAYS ? "en_peligro" : "apagada";
+}
+
+/**
+ * Racha que se muestra: con la racha apagada es 0 aunque `streak_count`
+ * guarde todavía el número viejo (ver `streakStatus`).
+ */
+export function visibleStreak(streakCount: number, status: StreakStatus) {
+  return status === "apagada" ? 0 : Math.max(0, Math.floor(streakCount));
+}
+
+/**
+ * Niveles del poste. Son de la racha, no de la liga de cortes de
+ * `@/lib/levels`: premian la constancia, no el volumen.
+ */
+export type StreakTier = "acero" | "oro" | "encendido";
+
+export const STREAK_TIER_LABELS: Record<StreakTier, string> = {
+  acero: "Acero",
+  oro: "Oro",
+  encendido: "Encendido",
+};
+
+/** Días de racha desde los que arranca cada nivel. */
+export const STREAK_TIER_FROM: Record<StreakTier, number> = {
+  acero: 0,
+  oro: 7,
+  encendido: 30,
+};
+
+export function streakTier(streak: number): StreakTier {
+  if (streak >= STREAK_TIER_FROM.encendido) return "encendido";
+  if (streak >= STREAK_TIER_FROM.oro) return "oro";
+  return "acero";
+}
+
+/** Siguiente nivel y cuántos días faltan, o null en el último. */
+export function nextStreakTier(
+  streak: number,
+): { tier: StreakTier; daysLeft: number } | null {
+  const tier = streakTier(streak);
+  if (tier === "encendido") return null;
+  const next: StreakTier = tier === "acero" ? "oro" : "encendido";
+  return { tier: next, daysLeft: STREAK_TIER_FROM[next] - streak };
+}

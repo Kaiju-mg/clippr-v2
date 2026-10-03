@@ -1,8 +1,9 @@
-import { Flame, Scissors, Wallet } from "lucide-react";
+import { Scissors, Wallet } from "lucide-react";
 import { StatTile, Tile } from "@/components/ui/Tile";
 import { LEVEL_LABELS, LEVEL_WINDOW_DAYS } from "@/lib/levels";
 import { formatGuaranies } from "@/lib/utils";
 import type { BarberStats } from "@/actions/stats.actions";
+import { StreakPanel } from "./StreakPanel";
 
 interface BarberDashboardProps {
   stats: BarberStats;
@@ -38,6 +39,10 @@ export function BarberDashboard({ stats, firstName }: BarberDashboardProps) {
         </p>
       </header>
 
+      {/* La racha va primero: es lo que motiva a volver a entrar acá, y el
+          poste necesita el ancho completo. */}
+      <StreakPanel count={stats.streakCount} status={stats.streakStatus} />
+
       <div className="grid grid-cols-2 gap-3">
         <StatTile
           icon={<Scissors size={18} strokeWidth={1.5} />}
@@ -61,22 +66,16 @@ export function BarberDashboard({ stats, firstName }: BarberDashboardProps) {
         </p>
       )}
 
-      {/* El cubo relleno de la pantalla: el nivel y la racha son la parte
-          que motiva, y la que justifica volver a entrar acá. */}
+      {/* El cubo relleno de la pantalla: el nivel. La racha tiene su propio
+          cubo arriba (StreakPanel), desde el 2026-10-03. */}
       <Tile variant="filled" className="gap-4 p-5">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex flex-col gap-0.5">
-            <p className="text-[0.625rem] font-medium tracking-[0.14em] uppercase opacity-80">
-              Tu nivel
-            </p>
-            <p className="font-display text-2xl font-semibold tracking-tight">
-              {LEVEL_LABELS[progress.level]}
-            </p>
-          </div>
-          <span className="bg-accent-contrast/15 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium tabular-nums">
-            <Flame size={14} strokeWidth={1.5} />
-            {stats.streakCount} {stats.streakCount === 1 ? "día" : "días"}
-          </span>
+        <div className="flex flex-col gap-0.5">
+          <p className="text-[0.625rem] font-medium tracking-[0.14em] uppercase opacity-80">
+            Tu nivel
+          </p>
+          <p className="font-display text-2xl font-semibold tracking-tight">
+            {LEVEL_LABELS[progress.level]}
+          </p>
         </div>
 
         <div className="flex flex-col gap-1.5">
