@@ -56,11 +56,12 @@ src/app/                 rutas (App Router)
   (auth)/                login/registro
   (dashboard)/           layout (guard de sesión + BottomNav) + inicio, caja,
                           agenda, servicios, productos, equipo, mas,
-                          estadisticas (vacío)
-src/components/          ui/ (incluye BottomNav) · forms/ · timers/
+                          estadisticas
+src/components/          ui/ (BottomNav, Tile — el cubo bento, ThemeSwitch) · forms/ · timers/
 src/lib/supabase/        client.ts (browser)  ·  server.ts (Server Components/Actions/Route Handlers)
 src/lib/utils.ts         formatGuaranies, cn
-src/lib/dates.ts         fechas del negocio en America/Asuncion — usar siempre esto, nunca new Date() pelado para "qué día es"
+src/lib/dates.ts         fechas del negocio en America/Asuncion — usar siempre esto, nunca new Date() pelado para "qué día es" ni un Intl.DateTimeFormat propio para mostrar una fecha
+src/lib/theme.ts         cookie del tema claro/oscuro (la lee el layout raíz)
 src/actions/             Server Actions — toda mutación sensible va acá
 src/store/               Zustand (timerStore)
 src/types/index.ts       tipos del modelo de datos
@@ -229,5 +230,101 @@ la acota a lo propio sobre esas tres tablas (verificado: la agenda del dueño
 sigue vacía aunque su barbero tenga turnos ese día). Ver
 `docs/arquitectura.md` sección "Estadísticas, Niveles y Rachas",
 `docs/decisiones.md` y `docs/deuda-tecnica.md`.
+
+Spec 09 (estabilización, seguridad y pulido) implementada en sus pasos 1 a 4
+y probada con Vitest (mocks de Supabase, 183 tests). Las **cuatro**
+migraciones nuevas están **aplicadas** contra el proyecto real
+(`supabase db push`, 2026-09-20) y probada de punta a punta en el navegador
+con una cuenta de dueño: walk-in, turno de agenda, venta de producto (con y
+sin stock), movimiento manual, cierre de caja con racha 0 → 1, ticket
+promedio y los fixes de `/equipo`. Cero errores de servidor y de consola.
+Ver `docs/arquitectura.md` sección "Estabilización, Seguridad y Pulido",
+subsección "Prueba de punta a punta". Qué cambió:
+
+- **Cobros atómicos** (`20260920000000_atomic_charge_rpcs.sql`): tres
+  funciones `SECURITY DEFINER` (`complete_walkin_and_charge`,
+  `complete_appointment_and_charge`, `sell_product_and_charge`) hacen todas
+  las escrituras de un cobro en una sola transacción. `completeWalkinAction`,
+  `completeScheduledAppointmentAction` y `sellProductAction` quedaron en una
+  llamada `.rpc(...)`. El monto lo lee la base, nunca viaja como parámetro.
+  Los errores de negocio vuelven como SQLSTATE de la clase `CL`
+  (`src/lib/db-errors.ts`).
+- **`users` cerrado** (`20260920010000_users_update_hardening.sql`): un
+  barbero ya no puede inflarse `streak_count` ni `level` desde la consola.
+  Policy de fila propia + `grant update (name)` (una policy no puede mirar
+  qué columna cambió) + `update_team_member` para el dueño y `service_role`
+  para la racha. **Ojo:** el cierre de caja ahora depende de
+  `SUPABASE_SERVICE_ROLE_KEY` para guardar racha/nivel; si falta, el cierre
+  igual funciona (try/catch) pero la gamificación no se actualiza.
+- **`transactions.category`** (`20260920020000_transactions_category.sql`):
+  `service`/`product`/`manual`. El ticket promedio del dueño dejó de mezclar
+  cortes con ventas.
+- **Pulido:** `/agenda` sin "Cobrar" en días futuros (el servidor decide si
+  el día es futuro y lo baja como prop), y los cuatro fixes de `/equipo` que
+  estaban pendientes desde el 2026-09-15.
+- **`20260920030000_revoke_rpc_from_anon.sql`:** en Supabase,
+  `revoke execute ... from public` **no** deja afuera a `anon` — hay un
+  `alter default privileges` que le da un grant explícito a cada función
+  nueva. Regla para cualquier función futura: revocarle a `anon` a mano. Ver
+  `docs/decisiones.md` 2026-09-20.
+
+El **paso 5 de la spec 09** (tests E2E de RLS automatizados) quedó fuera a
+propósito: no hay entorno de base donde correrlos sin ensuciar producción.
+El plan está escrito en `docs/deuda-tecnica.md`.
+
+Ver `docs/arquitectura.md` sección "Estabilización, Seguridad y Pulido" y
+`docs/decisiones.md` (2026-09-20).
+
+Bento UI y modo oscuro (2026-09-20, no es una spec del backlog):
+`/inicio`, `/caja` y `/estadisticas` pasaron a una grilla de cubos
+(`src/components/ui/Tile.tsx`: `Tile`, `StatTile`, `tileClasses`, más el
+token `--radius-tile`), con **un solo cubo relleno por pantalla**. El
+glassmorphism se exploró y se descartó por el costo de `backdrop-filter`
+en gama media. Cambios de contenido pedidos por el usuario: en `/inicio`
+la racha y los cortes van **arriba** de "Iniciar corte" (dos cubos
+compactos — cuadrados se comían media pantalla), la **caja sale** de esa
+pantalla, abajo aparecen los turnos agendados del día
+(`UpcomingAppointments`) y el **nivel se queda en `/estadisticas`**. `/caja` suma tres cubos de acción
+(Ingreso · Egreso · Vender) que abren en línea los formularios de la spec
+07 —ahora controlados— y la lista de movimientos del día
+(`getCashMovementsAction`, dato nuevo, **sin migración**).
+
+El **modo oscuro** reemplaza la decisión del 2026-09-14 ("tema fijo
+claro"): dos temas por `data-theme` en el `<html>`, switch en `/mas`,
+preferencia en la cookie `clippr-theme` que **lee el servidor** en
+`layout.tsx` (sin parpadeo ni desajuste de hidratación). El acento se
+partió en `--accent` (relleno), `--accent-contrast` (texto sobre el
+relleno) y `--accent-ink` (acento como texto), y se sumó `--success`:
+**ningún componente nuevo debe usar `text-white` sobre `bg-accent` ni
+`text-accent` como color de texto.** Verificado: lint, typecheck, 203
+tests, `npm run build` con las 14 rutas, y el mecanismo del tema contra el
+server de producción (cookie → `data-theme` → `theme-color` → CSS).
+**Pendiente:** el recorrido visual de las pantallas autenticadas en los
+dos temas, que necesita una sesión iniciada en el navegador. Ver
+`docs/arquitectura.md` sección "Bento UI y Modo Oscuro" y
+`docs/decisiones.md` (2026-09-20).
+
+Empezar un turno agendado desde `/inicio` (2026-09-20, no es una spec del
+backlog): cerró un hueco de modelo, no sólo de UI — **un turno agendado no
+se podía cronometrar**, el temporizador era sólo para el cliente de paso.
+Ahora `Timer` tiene `appointmentId`/`serviceId` opcionales (**sin
+`appointmentId` es un walk-in**, igual que antes, sin migrar el
+`localStorage`), el botón "Empezar" en la fila de `/inicio` arranca el
+contador, el turno desaparece de "Lo que viene" y se cobra desde la tarjeta
+con `completeScheduledAppointmentAction` — el RPC de la spec 09 sin tocar.
+**Sin migraciones.** Empezar no exige caja abierta (es estado local, regla
+4); cobrar sí.
+
+Tres cosas para tener presentes: (1) las tres acciones de
+`agenda.actions.ts` **no revalidaban `/inicio`** y por eso un turno recién
+agendado podía no aparecer ahí — arreglado; (2) **`useTimerStore.persist` no
+existe en el servidor** (sin `localStorage`, Zustand devuelve el store sin
+la API de persistencia), así que leerlo durante el render tumba la pantalla
+con un 500 — pasó, va con `?.` y tiene test; (3) el turno guarda la hora
+**agendada**, no la del cronómetro, así que las duraciones difieren (ver
+`docs/deuda-tecnica.md`). Verificado: lint, typecheck, 223 tests y `/inicio`
+sirviendo 200 sin errores. **Pendiente:** el recorrido a mano del flujo
+completo con sesión iniciada. Ver `docs/arquitectura.md` sección "Empezar un
+turno desde /inicio" y `docs/decisiones.md` (2026-09-20).
 
 El resto (nada pendiente del backlog) sigue como estaba.

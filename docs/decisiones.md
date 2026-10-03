@@ -979,3 +979,323 @@ cortes y la agenda, así que al menos toda la app corta el día igual. La
 racha es la única que sigue mirando `cash_sessions.start_time`, y eso es a
 propósito (caso borde 3 de la spec: cerrar a las 2 AM es la jornada
 anterior).
+
+## 2026-09-20 — Cobros y ventas atómicos vía RPC `SECURITY DEFINER`, revirtiendo la decisión de "toda la lógica en Server Actions"
+Elegido: tres funciones de Postgres (`complete_walkin_and_charge`,
+`complete_appointment_and_charge`, `sell_product_and_charge`) que hacen
+todas las escrituras de un cobro dentro de una única transacción.
+Descartado: seguir con dos o tres llamadas sueltas desde el Server Action y
+compensar a mano cuando la segunda falla.
+Por qué: la decisión vigente desde la spec 05 era mantener la lógica en
+Server Actions y no en RPC/triggers, para que se lea en un solo lugar. Eso
+sirvió hasta que el costo del atajo se volvió concreto: un corte guardado
+sin cobrar, o stock descontado sin venta, dejan la caja mal y **no hay
+compensación automática** — el mensaje "avisá para revisar el desfase" le
+pasaba el problema al barbero. Un cuerpo de función plpgsql ya corre dentro
+de una transacción, así que cualquier `raise` revierte todo lo anterior: es
+la única forma de que "el corte se guardó pero no entró a la caja" deje de
+ser un estado posible. El `for update` del RPC de venta además reemplaza al
+update condicionado al stock leído (decisión del 2026-09-16) con un lock
+real, y el del turno agendado hace lo mismo con el `eq("status",
+"scheduled")` contra el doble cobro.
+Costo: la lógica de tres cobros se parte en dos lugares (el Server Action
+traduce, la función decide) y las funciones son SECURITY DEFINER, así que
+saltean RLS y tienen que revalidar a mano lo que las policies garantizaban
+—caja propia y abierta, servicio/producto del mismo tenant—. Si alguien
+agrega una policy nueva y se olvida de mirar estas funciones, no se entera.
+El comentario de cabecera de la migración enumera qué revalida cada una.
+
+## 2026-09-20 — El monto lo lee el RPC, no viaja como parámetro
+Elegido: las funciones reciben `service_id` / `product_id` y leen
+`services.price` / `products.price` adentro de la misma transacción.
+Descartado: la firma que proponía la spec 09 (`amount` como parámetro,
+leído antes por el Server Action).
+Por qué: pasarlo como parámetro seguiría siendo seguro —el Server Action
+corre en el servidor— pero abre una ventana entre leer el precio y cobrarlo,
+y deja un parámetro `amount` en una función expuesta a `authenticated`, que
+es exactamente la forma del agujero que documenta `docs/aprendizajes-v1.md`
+("cualquier usuario puede alterar las peticiones HTTP y manipular la caja").
+Leerlo adentro hace que no exista camino por donde un monto entre desde
+afuera.
+Costo: la firma se aparta de la letra de la spec. Consultado y confirmado
+antes de implementar.
+
+## 2026-09-20 — La zona horaria no entra al SQL: el fin del día viaja como instante
+Elegido: `complete_appointment_and_charge` recibe `p_max_start_time`, que el
+Server Action calcula con `businessDayRangeUtc(businessToday())`.
+Descartado: resolver `(start_time at time zone 'America/Asuncion')::date`
+dentro de la función.
+Por qué: `src/lib/dates.ts` es la única fuente de verdad de "qué día es" en
+la app (CLAUDE.md). Meter la zona también en el SQL la duplica en un lugar
+donde nadie la va a buscar el día que haya que cambiarla — y ya está anotado
+en deuda técnica que si se suma otro país hay que pasarla a una columna de
+`barbershops`.
+Costo: un parámetro menos obvio de leer en la función; queda explicado en el
+comentario.
+
+## 2026-09-20 — `users`: grants por columna + RPC del dueño + `service_role` para la racha
+Elegido: tres capas. (1) Policy `users_update_own`: cada uno sólo toca su
+fila. (2) `revoke update` + `grant update (name)`: un barbero no puede
+escribir `streak_count`, `level` ni `commission_pct` ni siquiera en su propia
+fila. (3) Lo que sí tiene que escribirse va por caminos con privilegio
+propio: el dueño editando a su equipo por `update_team_member` (SECURITY
+DEFINER, valida el rol), y la racha/nivel por `createAdminClient()`
+(`service_role`).
+Descartado: (a) sólo cambiar la policy, que es lo que la spec 09 pedía
+literalmente; (b) un trigger `BEFORE UPDATE` que compare OLD/NEW según el
+rol.
+Por qué: una policy de RLS no puede mirar **qué columna** cambió —no tiene
+OLD/NEW—, así que "sólo podés editar campos no sensibles de tu perfil" no se
+puede expresar como policy. Los grants por columna sí: Postgres rechaza el
+update antes incluso de evaluar la policy. El trigger también servía, pero
+esconde la regla en un lugar donde no se la busca; un RPC con nombre propio
+se lee desde el Server Action que lo llama.
+Costo: la spec pedía restringir el update "a campos no sensibles del propio
+perfil", lo que a secas rompía `/equipo` (el dueño edita nivel y comisión de
+sus barberos). Se consultó y se confirmó este diseño. Además, cerrar
+`authenticated` obliga a que el cierre de caja dependa de
+`SUPABASE_SERVICE_ROLE_KEY`: `applyStreakAndLevel` quedó envuelto en
+try/catch para que, si falta la key, el cierre igual se reporte como exitoso
+(la caja ya está cerrada y con el saldo correcto en la base) — la regla del
+2026-09-17 sigue valiendo.
+
+## 2026-09-20 — `transactions.category` en vez de deducir el tipo del texto de la descripción
+Elegido: una columna `category` (`service` / `product` / `manual`) con
+`check`, escrita por los tres RPC y por el movimiento manual.
+Descartado: seguir distinguiendo por el prefijo de `description`
+("Corte: ", "Venta: ").
+Por qué: el ticket promedio del dueño dividía **todo** lo cobrado por la
+cantidad de cortes, así que una barbería que vende cera mostraba un ticket
+que ningún cliente pagó nunca. Un prefijo de texto no es un dato: se rompe
+con cambiar una palabra de la copia.
+Costo: una migración de esquema y una columna más para mantener. Las filas
+que ya existían se backfillean por ese mismo prefijo —el criterio que
+usábamos a ojo hasta ahora—, así que una descripción rara de antes del
+2026-09-20 puede quedar clasificada como `manual`. El `default 'service'` de
+la columna sólo cubre a un insert que se olvide de pasarla; ningún camino
+del código depende de él.
+
+## 2026-09-20 — En Supabase, `revoke execute from public` no deja afuera a `anon`
+Elegido: revocar `execute` explícitamente a `anon` en cada función nueva
+(`20260920030000_revoke_rpc_from_anon.sql`), además del revoke sobre PUBLIC.
+Descartado: dar por bueno el `revoke ... from public` + `grant ... to
+authenticated`, que es el patrón que uno esperaría.
+Por qué: Supabase configura `alter default privileges ... grant execute on
+functions to anon, authenticated, service_role`, así que cada función nace
+con un grant **explícito** a `anon`. Un revoke sobre PUBLIC no toca un grant
+explícito a un rol: son dos cosas distintas. Se descubrió verificando contra
+el proyecto real — `proacl` mostraba `anon=X/postgres`, y un POST a
+`/rest/v1/rpc/complete_walkin_and_charge` con la anon key entraba al cuerpo
+de la función en vez de rebotar. No había fuga de datos (las cinco funciones
+cortan con CL008 apenas ven `current_user_id()` en null, que es justamente
+por qué son SECURITY DEFINER), pero una función SECURITY DEFINER ejecutable
+por cualquiera con la clave pública es superficie de ataque que no hace falta
+tener.
+Costo: hay que acordarse de revocarle a `anon` en cada función nueva; el
+revoke sobre PUBLIC solo es engañoso porque *parece* suficiente. Vale como
+regla general del repo, no como detalle de esta migración.
+
+## 2026-09-20 — `randomId()` en vez de `crypto.randomUUID()` en el cliente
+Elegido: `src/lib/ids.ts`, que usa `crypto.randomUUID()` cuando existe y si no
+arma el UUID v4 con `crypto.getRandomValues`.
+Descartado: llamar a `crypto.randomUUID()` directo, como hacía el
+`timerStore` desde la spec 05.
+Por qué: `crypto.randomUUID()` **sólo existe en contextos seguros** (HTTPS o
+`localhost`). Servida por IP con HTTP plano —que es exactamente cómo se prueba
+la app desde un celular en la misma red, y el caso de uso principal de una app
+mobile-first— queda `undefined`, y `startTimer` moría con
+`TypeError: crypto.randomUUID is not a function` **antes** de crear nada: el
+barbero tocaba "Iniciar corte" y no pasaba absolutamente nada, sin mensaje de
+error. Lo encontró el usuario probando desde su celular el 2026-09-20; en
+desarrollo no aparecía nunca porque `localhost` sí cuenta como contexto
+seguro. `crypto.getRandomValues` no tiene esa restricción y da la misma
+calidad de aleatoriedad.
+Costo: una indirección más y un UUID armado a mano. A cambio, la app deja de
+depender de que el origen sea seguro para una función que no tiene nada que
+ver con seguridad.
+Nota para el futuro: `navigator.clipboard` (copiar la contraseña temporal en
+`/equipo`) tiene la misma restricción, pero ya estaba envuelto en try/catch y
+la contraseña se ve en pantalla igual, así que degrada solo. Cualquier API
+nueva que se agregue conviene mirarla con esta lupa: probar por IP desde el
+celular es parte del flujo normal de este proyecto.
+
+## 2026-09-20 — Dirección visual: bento UI (grilla de cubos)
+Elegido (a pedido del usuario, con mockups iterados en el canvas
+"Muestrario Clippr" antes de tocar código): las pantallas de `/inicio`,
+`/caja` y `/estadisticas` pasan a una grilla de cubos (`Tile`), donde la
+jerarquía la da el **tamaño** del cubo y **un solo cubo relleno** por
+pantalla. Se agrega `src/components/ui/Tile.tsx` (`Tile`, `StatTile`,
+`tileClasses`) y el token `--radius-tile`; `StatCard` de la spec 08 queda
+absorbido por `StatTile`.
+Descartado: glassmorphism (vidrio sobre fondo de color), explorado en los
+artboards L a O del mismo canvas.
+Por qué: el bento reusa los tokens que ya había y no necesita ninguna
+librería, así que el costo es de layout y no de sistema. El vidrio exige un
+fondo de color detrás (o no se ve nada), lo que choca con la identidad
+clara, y `backdrop-filter` repinta en cada scroll: caro justo en el
+teléfono de gama media que es el dispositivo objetivo.
+Costo: cuatro pantallas con su propia grilla que hay que mantener
+coherentes — el radio y el relleno se cambian desde `--radius-tile` y
+`Tile`, pero la elección de qué entra en cada grilla es manual. `/agenda`,
+`/servicios`, `/productos` y `/equipo` **no** se pasaron a bento en esta
+tanda, así que por un rato conviven dos lenguajes de layout.
+
+## 2026-09-20 — Modo oscuro con switch: supera la decisión del 2026-09-14
+Elegido (a pedido del usuario): dos temas conmutados por `data-theme` en el
+`<html>`, con un switch en `/mas`. El tema se guarda en la cookie
+`clippr-theme` y lo lee el **servidor** en `src/app/layout.tsx`, que baja el
+HTML ya pintado.
+Descartado: `prefers-color-scheme` (seguir al sistema operativo);
+`localStorage` + script inline; un Server Action para guardar la
+preferencia.
+Por qué: esto **reemplaza** la decisión "Fondo blanco fijo — no hay modo
+oscuro por ahora" del 2026-09-14 (más arriba en este archivo), que queda
+superada; el usuario pidió el modo oscuro explícitamente el 2026-09-20.
+Sobre el mecanismo: con la cookie el servidor ya sabe el tema al renderizar,
+así que no hay parpadeo de claro a oscuro en el primer pintado ni desajuste
+de hidratación — que es justo lo que pasa con `localStorage`, que sólo se
+puede leer en el cliente. Y no es un Server Action porque cambiar de tema
+tiene que funcionar con la red caída (regla 4 de CLAUDE.md) y no hay nada
+que revalidar: el `ThemeSwitch` escribe `document.documentElement.dataset.theme`
+y la cookie desde el cliente. Una preferencia visual no es lógica de negocio
+sensible, así que no cae bajo la regla 1.
+El acento oscuro se mantiene en la familia Tinta (`#3d6da8`), no en el
+dorado que mostraba el mockup: cambiar de color de marca al invertir el tema
+son dos identidades, no una.
+Costo: leer la cookie vuelve dinámica la raíz (ya lo era de hecho por las
+cookies de sesión de Supabase). Cada pantalla nueva hay que mirarla en los
+dos temas, y el contraste de los cubos rellenos se verifica a mano. `dark:`
+quedó reapuntado a `data-theme` con `@custom-variant` para que nadie lo use
+creyendo que sigue al switch cuando en realidad seguiría al sistema.
+
+## 2026-09-20 — `--accent` se parte en tres tokens
+Elegido: `--accent` (relleno), `--accent-contrast` (texto **sobre** el
+relleno) y `--accent-ink` (el acento usado **como** texto o ícono sobre el
+fondo). Se suma `--success`, que antes no existía.
+Descartado: un solo `--accent` con `text-white` a mano encima, que es lo que
+había.
+Por qué: el mismo color se usaba para las dos cosas — `bg-accent` con texto
+blanco en `Button`, y `text-accent` en `BottomNav` y en los precios de las
+listas. Al invertir el tema eso es imposible de cumplir con un valor: el
+azul que contrasta sobre blanco no contrasta sobre carbón. `--success` entró
+porque los cubos de caja distinguen ingresos de egresos por color y el verde
+estaba hardcodeado en el mockup.
+Costo: tres tokens en vez de uno, y hay que saber cuál va en cada caso. La
+regla es simple: si el color pinta un fondo es `accent`; si pinta texto
+sobre el fondo de la página es `accent-ink`.
+
+## 2026-09-20 — La caja sale de `/inicio`; el nivel se queda en `/estadisticas`
+Elegido (a pedido del usuario): `/inicio` muestra racha y cortes del día
+(dos cubos, arriba), el cubo relleno de "Iniciar corte" y los turnos
+agendados de hoy. Sin saldo de caja y sin barra de nivel.
+Descartado: el cubo de caja y el de nivel en `/inicio`, que estaban en el
+mockup H.
+Por qué: `/inicio` tiene una sola acción que empujar (arrancar un corte) y
+el saldo competía con ella teniendo su propia pantalla en la BottomNav. El
+nivel necesita explicar que se mide sobre una ventana móvil de 30 días, y
+ese espacio sólo existe en `/estadisticas` — un "Nivel Pro" suelto no se
+entiende. `/inicio` sigue pidiendo la caja al servidor aunque no la muestre:
+`TimerList` necesita el `cashSessionId` para poder cobrar.
+Costo: para ver el saldo hay un toque más. Los turnos de `/inicio` son sólo
+lectura (cobrar y cancelar siguen en `/agenda`, que es la que tiene el
+estado optimista), así que el mismo dato se muestra en dos lugares con
+capacidades distintas.
+
+## 2026-09-20 — Los formateadores de fecha se centralizan en `src/lib/dates.ts`
+Elegido: `formatBusinessDateLabel`, `formatBusinessTime` y
+`formatBusinessDateTime` viven en `dates.ts`, junto al resto de las fechas
+del negocio.
+Descartado: dejar que cada pantalla armara su `Intl.DateTimeFormat` con la
+zona puesta a mano, que es lo que había (uno en `AgendaView`, otro en
+`AppointmentRow`, otro inline en `caja/page.tsx`).
+Por qué: la regla del repo es que "qué día es" y "a qué hora" se resuelven
+en un solo lugar; tener tres copias es exactamente cómo se cuela un
+`timeZone` olvidado. `/inicio` necesitaba los mismos formatos y era el
+momento de unificar.
+Costo: ninguno de fondo, pero quedó algo a la vista: **`es-PY` formatea la
+hora en 12 horas** ("3:30 p. m.", no "15:30"), que es lo que la app viene
+mostrando desde la spec 06. Se dejó igual para no cambiar un
+comportamiento que nadie pidió cambiar; si se prefiere 24 horas es agregar
+`hourCycle: "h23"` al formateador, y cambia en las tres pantallas a la vez.
+Anotado también que Paraguay dejó de mover el reloj en 2024 y quedó fijo en
+UTC−3, así que ya no hay que pensar en qué mes es para calcular el offset.
+
+## 2026-09-20 — El temporizador se vincula al turno agendado, no lo duplica
+Elegido: `Timer` gana `appointmentId` y `serviceId` opcionales
+(`src/store/timerStore.ts`). Desde `/inicio`, "Empezar" arranca un
+temporizador atado al turno, y al finalizar cobra con
+`completeScheduledAppointmentAction` — el RPC
+`complete_appointment_and_charge` que ya existía desde la spec 09, sin
+tocarlo.
+Descartado: usar el temporizador de walk-in para un cliente con turno (lo
+único posible hasta hoy), que crea un `appointment` nuevo y deja el
+agendado colgado para cancelarlo a mano; y poner "Cobrar" en `/inicio`
+sin cronómetro.
+Por qué: había un hueco de modelo, no sólo de UI. El temporizador existía
+sólo para el cliente de paso, así que un cliente **con** turno que llegaba y
+se sentaba no tenía reloj. El pedido del usuario ("no puedo empezar desde
+ahí, me tengo que ir a agenda") es el síntoma. Sin `appointmentId` el timer
+sigue siendo un walk-in exactamente como antes, así que los timers que ya
+estaban en `localStorage` no necesitan ninguna migración de estado.
+Costo: dos formularios de cierre en vez de uno (`FinishWalkinForm` y
+`FinishAppointmentForm`, con el aviso de caja cerrada extraído a
+`SinCajaAviso`). Y el turno queda registrado con la hora **agendada**, no
+con la del cronómetro: si el cliente de las 15:30 llega 15:45, el timer
+marca 30 min y el turno guarda 45. Cambiarlo pide un parámetro nuevo en el
+RPC y una columna `scheduled_start_time` para no perder la hora original
+(ver docs/deuda-tecnica.md).
+
+## 2026-09-20 — Al empezar un turno, la fila desaparece de "Lo que viene"
+Elegido (a pedido del usuario): el turno que ya tiene temporizador se
+filtra de la lista de `/inicio`. Con todos en curso, el cubo dice "Todos
+los turnos de hoy están en curso" y no "No tenés turnos agendados", que
+sería falso.
+Descartado: dejar la fila en gris marcada "En curso".
+Por qué: el turno se **mudó** de una lista a la otra; mostrarlo en las dos
+hace aparecer al mismo cliente dos veces en la misma pantalla, con dos
+juegos de acciones distintos. Consecuencia técnica: `UpcomingAppointments`
+pasó de Server Component a client component, porque el filtro depende del
+store del temporizador. Los datos siguen bajando por props desde el
+servidor — ahí no se decide nada, sólo se dibuja.
+Costo: un client component más en el árbol de `/inicio`, y el detalle de
+hidratación de la entrada siguiente.
+
+## 2026-09-20 — `useTimerStore.persist` no existe en el servidor
+Elegido: los tres accesos a `.persist` en `useTimerStoreHydrated` van con
+`?.`, y el hook arranca en `false` cuando no hay API de persistencia.
+Descartado: leer `useTimerStore.persist.hasHydrated()` directo en el
+inicializador de `useState`, que es lo que escribí primero.
+Por qué: **tumbó `/inicio` con un 500.** Cuando no hay `localStorage`, el
+middleware `persist` de Zustand avisa por consola y devuelve el store
+pelado, **sin colgarle la API de persistencia**. El código original sólo
+tocaba `.persist` dentro de un `useEffect`, que corre nada más que en el
+cliente, así que nunca se había notado; moverlo al inicializador de
+`useState` lo puso en el camino del **render**, y el render de un client
+component también pasa por el servidor. `TypeError: Cannot read properties
+of undefined (reading 'hasHydrated')` en el log del dev server, con el
+stack `useTimerStoreHydrated` → `TimerList` → `GET /inicio 500`.
+Por qué el inicializador y no `false` a secas: en un mount posterior (ir de
+/caja a /inicio sin recargar) el store ya está hidratado, y arrancar en
+`false` mostraría un parpadeo de la lista sin filtrar. Con el `?.` se
+conservan las dos cosas.
+Costo: tres `?.` y una función `persistApi()` de una línea. Regla general,
+hermana de la de `crypto.randomUUID` (más arriba): antes de mover código de
+un `useEffect` al cuerpo del render, preguntarse si eso existe en el
+servidor. Hay un test que fija el contrato en `timerStore.test.ts`.
+
+## 2026-09-20 — Descartar el temporizador ante cualquier error, no según el texto del mensaje
+Elegido: si el cobro de un turno falla, `FinishAppointmentForm` muestra el
+error y ofrece **Descartar** y **Reintentar**, sin importar cuál fue el
+error.
+Descartado: comparar el mensaje con `"Turno no encontrado o ya fue
+actualizado."` para ofrecer Descartar sólo en ese caso.
+Por qué: el caso que hay que cubrir es el turno que se cobró o se canceló
+desde `/agenda` mientras el temporizador corría — el RPC devuelve `CL004` y
+el turno ya no está en `scheduled`, así que el barbero se quedaba con un
+temporizador imposible de cerrar. Pero decidirlo mirando el texto se rompe
+en silencio el día que alguien reescribe la copia, y las constantes de
+mensaje no se pueden exportar desde un archivo `"use server"` (Next exige
+que todo lo exportado ahí sea una función async). Y descartar **no pierde
+plata**: si el turno sigue agendado se cobra desde `/agenda`.
+Costo: el barbero puede descartar un temporizador tras un error de red y
+perder el cronómetro (no el cobro). A cambio, nunca queda trabado.

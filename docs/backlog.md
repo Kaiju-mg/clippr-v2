@@ -94,3 +94,46 @@ racha tolera **un día de gracia**. Ver la sección 6 de
 `docs/specs/08-estadisticas-niveles-rachas.md` y `docs/decisiones.md`.
 
 Ver `docs/arquitectura.md` sección "Estadísticas, Niveles y Rachas".
+
+### 9. Estabilización, Seguridad y Pulido (pasos 1–4 implementados; paso 5 pospuesto)
+No es una rebanada de producto: salda la deuda técnica de Alta y Media prioridad antes de la entrada de usuarios reales.
+- **Migraciones (aplicadas el 2026-09-20):** RPC atómicos de cobro y venta (`20260920000000`), cierre del `update` de `users` con grants por columna + RPC del dueño (`20260920010000`), columna `transactions.category` (`20260920020000`) y el revoke de `execute` a `anon` que las dos primeras no lograban (`20260920030000`, encontrado al verificar).
+- **Server Actions:** `completeWalkinAction`, `completeScheduledAppointmentAction` y `sellProductAction` pasan a una sola llamada `.rpc(...)`; `applyStreakAndLevel` pasa a `service_role`; `updateBarberAction` pasa al RPC `update_team_member`.
+- **UI:** ticket promedio sólo con cortes; `/agenda` sin "Cobrar" en días futuros; cuatro fixes de copy y tokens en `/equipo`, login, registro y servicios.
+- **Paso 5 (tests E2E de RLS automatizados): fuera de esta entrega**, por falta de un entorno de base de datos donde correrlos sin ensuciar producción. El plan escrito está en `docs/deuda-tecnica.md`.
+- **Test:** Vitest (Supabase mockeado), 183 tests en verde; verificación contra la base por SQL (funciones, grants, policies, backfill) y por HTTP a PostgREST; y prueba de punta a punta en el navegador contra el proyecto real con una cuenta de dueño (walk-in, agenda, día futuro, venta con y sin stock, movimiento manual, ticket promedio, /equipo, cierre con racha 0 → 1). Cero errores de servidor y de consola.
+
+Ver `docs/arquitectura.md` sección "Estabilización, Seguridad y Pulido" y
+`docs/decisiones.md` (2026-09-20, cinco entradas: RPC atómicos, el monto que
+no viaja como parámetro, la zona horaria fuera del SQL, las tres capas de
+`users` y `transactions.category`).
+
+### Bento UI y modo oscuro (2026-09-20, implementado — no es una rebanada del backlog)
+Pasada visual sobre specs ya implementadas, más el modo oscuro que el
+usuario pidió. No agrega ninguna capacidad de producto nueva salvo dos
+datos que ya estaban en la base y no se mostraban: los turnos del día en
+`/inicio` y la lista de movimientos en `/caja`.
+
+- **Dirección visual:** grilla de cubos (bento) en `/inicio`, `/caja` y
+  `/estadisticas`, con `src/components/ui/Tile.tsx` como primitiva y un
+  solo cubo relleno por pantalla. Glassmorphism explorado y descartado.
+- **Contenido movido, a pedido del usuario:** racha y cortes arriba de
+  "Iniciar corte"; la caja fuera de `/inicio`; los turnos del día abajo;
+  el nivel solo en `/estadisticas`.
+- **Modo oscuro:** switch en `/mas`, cookie `clippr-theme` leída por el
+  servidor. Reemplaza la decisión del 2026-09-14 de tema claro fijo.
+- **Sin migraciones.** `getCashMovementsAction` usa columnas que ya
+  existían (`transactions.description`/`created_at` de la spec 05,
+  `category` de la 09).
+- **Test:** Vitest (Supabase mockeado), 203 tests en verde en 19 archivos
+  —nuevos: `getCashMovementsAction`, `UpcomingAppointments`,
+  `ThemeSwitch` y los formateadores de `dates.ts`—, `npm run build` con
+  las 14 rutas, y el mecanismo del tema verificado contra el server de
+  producción (cookie → `data-theme` → `theme-color` → CSS servido).
+  **Falta el recorrido visual de las pantallas autenticadas en los dos
+  temas** (necesita sesión iniciada en el navegador).
+
+Ver `docs/arquitectura.md` sección "Bento UI y Modo Oscuro" y
+`docs/decisiones.md` (2026-09-20, cinco entradas: bento, modo oscuro,
+los tres tokens de acento, la caja fuera de `/inicio` y los
+formateadores de fecha).

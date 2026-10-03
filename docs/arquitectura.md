@@ -220,6 +220,14 @@ sin caja abierta.
   `src/components/timers/`. Sin caja abierta, `FinishWalkinForm` bloquea el
   cobro con un aviso y un link a `/caja` en vez de mostrar el formulario.
 
+> **Ampliado el 2026-09-20.** El temporizador ya no es sólo para el cliente
+> de paso: un turno agendado también se puede cronometrar desde `/inicio`
+> (`Timer.appointmentId`), y se cierra con `FinishAppointmentForm` en vez de
+> `FinishWalkinForm`. El aviso de caja cerrada salió de `FinishWalkinForm` a
+> `SinCajaAviso.tsx`, compartido por los dos. El botón "Iniciar corte" pasó
+> de contorno a relleno con el rediseño bento. Ver "Empezar un turno desde
+> /inicio" más abajo.
+
 ### Navegación Minimalista (implementado)
 
 Spec 05.5 (`docs/specs/05.5-navegacion-minimalista.md`). Conecta las
@@ -289,6 +297,12 @@ real, mismo criterio que la dirección visual del 14/09. Ver
   al input, franja con flecha) en el Artifact antes de elegir esta. El
   input "Servicio (opcional)" se conserva, más chico, arriba del botón:
   sigue siendo la única forma de distinguir timers concurrentes.
+
+> **Superado en parte el 2026-09-20.** La cabecera de `/inicio` y el CTA
+> "Iniciar corte" cambiaron con el pase a bento: las píldoras son ahora dos
+> cubos y el CTA pasó de contorno a **relleno**. Lo que sigue vigente de
+> esta sección es la tipografía, los íconos y el sistema de botones. Ver
+> "Bento UI y Modo Oscuro" más abajo.
 
 ### Agenda de Turnos Programados (implementado)
 
@@ -471,6 +485,294 @@ escritas en la sección 6 de la spec y en `docs/decisiones.md`.
   junto a "Gs. 0 cobrado hoy". El recorte pasó a `transactions.created_at`
   y las cajas se buscan por intersección con el rango.
 
+### Estabilización, Seguridad y Pulido (spec 09, pasos 1–4 implementados)
+
+Novena rebanada (`docs/specs/09-estabilizacion-y-pulido.md`). Cuatro migraciones
+nuevas, **aplicadas** contra el proyecto real con `supabase db push` el
+2026-09-20: `20260920000000_atomic_charge_rpcs.sql`,
+`20260920010000_users_update_hardening.sql`,
+`20260920020000_transactions_category.sql` y
+`20260920030000_revoke_rpc_from_anon.sql`. Probado con Vitest (Supabase
+mockeado) y verificado contra la base por SQL y por HTTP a PostgREST (ver
+"Verificación" más abajo). El paso 5 de la spec (tests E2E de RLS
+automatizados) quedó fuera a propósito, con el plan escrito en
+`docs/deuda-tecnica.md`. Cuatro puntos donde la spec no cerraba contra el
+código se consultaron antes de implementar y quedaron en `docs/decisiones.md`.
+
+- **Cobros atómicos (paso 1).** `complete_walkin_and_charge`,
+  `complete_appointment_and_charge` y `sell_product_and_charge`: cada una hace
+  todas las escrituras de un cobro dentro de una sola transacción de Postgres,
+  así que "el corte se guardó pero no entró a la caja" y "se descontó el stock
+  pero no se cobró" dejaron de ser estados posibles. `completeWalkinAction`,
+  `completeScheduledAppointmentAction` y `sellProductAction` pasaron de dos o
+  tres consultas a una sola llamada `.rpc(...)`. Las tres son SECURITY DEFINER
+  (saltean RLS) y revalidan a mano caja propia y abierta, y servicio/producto
+  del mismo tenant — `assert_open_cash_session` centraliza lo primero. El monto
+  lo lee la función de `services.price` / `products.price`: nunca llega por
+  parámetro. El `for update` reemplaza al update condicionado al stock leído y
+  al `eq("status", "scheduled")` como barrera contra ventas y cobros dobles.
+  Los errores de negocio viajan como SQLSTATE propios de la clase `CL`
+  (`src/lib/db-errors.ts`) para que el Server Action siga mostrando el mensaje
+  exacto en vez de uno genérico.
+- **`users` cerrado (paso 2).** `users_update_same_barbershop` (spec 01) dejaba
+  a cualquier integrante escribir cualquier fila de su barbería: un barbero
+  podía inflarse `streak_count` desde la consola. Ahora: policy
+  `users_update_own` (sólo la fila propia) + `grant update (name)` (sólo esa
+  columna, porque una policy no puede mirar qué campo cambió) + dos caminos con
+  privilegio propio para lo legítimo — `update_team_member` (SECURITY DEFINER,
+  valida `owner` y misma barbería) para `/equipo`, y `createAdminClient()`
+  (`service_role`) para `applyStreakAndLevel`. Ese último quedó envuelto en
+  try/catch: si falta `SUPABASE_SERVICE_ROLE_KEY`, el cierre de caja igual se
+  reporta como exitoso, que es la regla del 2026-09-17.
+- **`transactions.category` (paso 3).** `service` / `product` / `manual`, con
+  `check` e índice. `sumIncome` (`stats.actions.ts`) devuelve el ingreso
+  abierto en total y sólo-cortes, y `getOwnerStatsAction` calcula
+  `averageTicket` con `totalServiceIncome / totalCuts`: el ticket promedio dejó
+  de mezclar cortes con ventas de cera y propinas. "Ingresos" sigue siendo todo
+  lo que entró a la caja. Las filas viejas se backfillean por el prefijo de
+  `description`, que es el criterio que se usaba a ojo hasta ahora.
+- **Pulido (paso 4).** `/agenda` ya no muestra "Cobrar" en un día futuro (el
+  servidor siempre lo rechazaba, pero `useOptimistic` alcanzaba a pintar
+  "Cobrado" por unos segundos); el "es un día futuro" lo decide el servidor en
+  `agenda/page.tsx` y baja como prop, para que el día del negocio no dependa
+  del reloj del celular ni difiera entre el render del servidor y el del
+  cliente. En `/equipo`: "Agregar barbero" en oración normal, "Correo" →
+  "Email" y sin el "0%" de comisión al lado del dueño. Los cuatro
+  `text-red-600` sueltos (login, registro, equipo, servicios) pasaron al token
+  `text-danger`.
+
+- **Verificación (2026-09-20, proyecto real).** Las cuatro migraciones se
+  aplicaron sin errores de SQL. Contra la base: las cinco funciones existen con
+  la firma esperada y `prosecdef = true`; `authenticated` quedó con `UPDATE`
+  sobre **una sola** columna de `users` (`name`) y `anon` sin ninguna, mientras
+  `service_role` las conserva todas; `users_update_same_barbershop` ya no
+  existe y quedó `users_update_own (id = current_user_id())`; el backfill de
+  `category` clasificó las 14 filas que ya había (9 `service`, 3 `product`,
+  2 `manual`). Contra PostgREST, con la anon key y el header
+  `application/vnd.pgrst.object+json` que pone `.single()`: los cuatro RPC son
+  alcanzables y **los SQLSTATE de la clase `CL` llegan como `error.code`**, que
+  es de lo que dependen los `switch` de los Server Actions.
+
+  Esa prueba encontró un problema y lo corrigió: el
+  `revoke execute ... from public` de las dos primeras migraciones **no dejaba
+  afuera a `anon`**. Supabase tiene un `alter default privileges` que le da
+  `execute` explícito a `anon` sobre cada función nueva del schema `public`, y
+  un revoke sobre PUBLIC no toca un grant explícito — `proacl` mostraba
+  `anon=X/postgres` y un POST anónimo entraba al cuerpo de la función. No había
+  fuga (las cinco cortan con CL008 apenas ven `current_user_id()` en null), pero
+  la barrera estaba adentro y no en la puerta. La migración
+  `20260920030000_revoke_rpc_from_anon.sql` lo cierra: ahora un POST anónimo
+  devuelve `42501 permission denied for function`.
+
+- **Prueba de punta a punta (2026-09-20, proyecto real, cuenta de dueño).**
+  Cero errores de servidor y de consola. Se probó:
+  - **Walk-in:** timer, finalizar y cobrar. El `appointment` quedó `completed`
+    con el `client_name` recortado, `start_time` del timer y `end_time` del
+    reloj del servidor. La prueba de atomicidad es que el `created_at` de la
+    `transaction` es **idéntico** al `end_time` del turno
+    (`14:47:00.508146`): `now()` es estable dentro de una transacción de
+    Postgres, así que ese valor repetido sólo puede salir de un único commit.
+    Monto 45.000 leído por el RPC, `category = 'service'`.
+  - **Agenda:** turno agendado y cobrado, sin error. Confirma que
+    `.rpc(...).single()` deserializa bien un retorno compuesto
+    (`returns public.appointments`), que era el riesgo abierto.
+  - **Día futuro:** un turno del día siguiente muestra "Se cobra el día del
+    turno" en lugar del botón, y el de hoy sí muestra "Cobrar".
+  - **Venta:** 2 unidades descontaron el stock de 3 a 1 y entraron 40.000
+    (precio × cantidad, leído por el RPC) con `category = 'product'`. Al
+    intentar vender 5 con 1 en stock, la pantalla mostró "No hay stock
+    suficiente de Cera spec09 (quedan 1)" y el stock **no se movió**: el
+    rollback funciona y el mensaje se arma bien con `error.message` (nombre) y
+    `error.details` (stock) del `raise` CL006. `SellProductForm` no valida la
+    cantidad contra el stock en el cliente, así que ese texto vino del
+    servidor.
+  - **Movimiento manual:** egreso con `category = 'manual'`. El saldo siguió
+    la cuenta en cada paso (50.000 → 140.000 → 128.000 → 168.000) y el cierre
+    guardó 168.000 como `final_balance`.
+  - **Ticket promedio:** con 130.000 de ingresos, 2 cortes y una venta de
+    40.000, la pantalla muestra **45.000** ("Sólo cortes, sin productos").
+    Antes mostraba 130.000 / 2 = 65.000.
+  - **`/equipo`:** "Agregar barbero" en oración normal, "Email" en el alta, el
+    dueño sin el "0%" y el barbero con su porcentaje. Editar nivel y comisión
+    de un barbero funciona — y sólo puede haber pasado por `update_team_member`,
+    porque `authenticated` ya no tiene el grant sobre esas columnas.
+  - **Cierre y gamificación:** la racha pasó de 0 a 1, escrita por
+    `service_role`. Si el cambio de grants hubiera roto ese camino, habría
+    quedado en 0.
+  - **El agujero cerrado, comprobado de frente:** con `set local role
+    authenticated`, un `update` de `streak_count` o de `commission_pct` sobre
+    `users` devuelve `42501 permission denied`, mientras que uno de `name`
+    pasa. Las tres capas hacen lo que dicen.
+
+### Bento UI y Modo Oscuro (implementado)
+
+Pasada visual del 2026-09-20 sobre specs ya implementadas (no es una spec
+nueva del backlog), explorada primero en el canvas "Muestrario Clippr"
+(artboards H a K para bento, L a O para el glassmorphism que se descartó)
+antes de tocar código. Ver `docs/decisiones.md` (varias entradas
+2026-09-20).
+
+**La primitiva — `src/components/ui/Tile.tsx`:**
+
+- `tileClasses(variant, className)` da las clases del cubo sin fijar el
+  elemento, para que un cubo que navega sea un `<a>` de verdad y uno que
+  abre un panel sea un `<button>`. **No fija la dirección del flex**: un
+  `flex-row` en `className` no podría pisar un `flex-col` de la base
+  (pesan igual y gana el orden de la hoja de estilos, no el del atributo).
+- `Tile` es el `div` de siempre, con `flex-col`. Tres variantes:
+  `default` (`bg-surface-2` + borde), `filled` (`bg-accent` +
+  `text-accent-contrast`) y `plain` (fondo de página + borde).
+- `StatTile` es el cubo de un número: ícono arriba, cifra grande abajo.
+  Reemplaza al `StatCard` de la spec 08, que se borró. Sin `value` dibuja
+  sólo la etiqueta — el caso de "la consulta falló y no inventamos un
+  número".
+- Regla que se mantiene de `Button`: **un solo cubo relleno por pantalla**.
+  El radio sale de `--radius-tile` (`rounded-tile`), en `globals.css`.
+
+**Tokens (`src/app/globals.css`):** el acento se partió en `--accent`
+(relleno), `--accent-contrast` (texto sobre el relleno) y `--accent-ink`
+(acento como texto/ícono sobre el fondo), y se sumó `--success`. Todo
+`text-white` sobre `bg-accent` pasó a `text-accent-contrast` y todo
+`text-accent` de texto pasó a `text-accent-ink`, en los ocho lugares donde
+estaba.
+
+**Modo oscuro:** bloque `[data-theme="dark"]` con la paleta oscura (misma
+familia Tinta, aclarada). El tema se guarda en la cookie `clippr-theme`
+(`src/lib/theme.ts`), la lee el servidor en `src/app/layout.tsx` y baja
+como `data-theme` en el `<html>` — sin parpadeo y sin desajuste de
+hidratación. `generateViewport()` hace que el `theme-color` del navegador
+acompañe. El switch es `src/components/ui/ThemeSwitch.tsx` en `/mas`, que
+escribe el `dataset.theme` y la cookie **desde el cliente** (funciona con
+la red caída). `@custom-variant dark` reapunta `dark:` a `data-theme`, para
+que nadie lo use creyendo que sigue al switch.
+
+**Las tres pantallas:**
+
+- **`/inicio`:** cabecera con la fecha del negocio y las iniciales que
+  llevan a `/mas`; dos cubos compactos (racha y cortes de hoy) **arriba**
+  del cubo relleno de "Iniciar corte"; los temporizadores activos; y
+  `_components/UpcomingAppointments.tsx` con los turnos `scheduled` de hoy
+  (hasta 4, con botón "Empezar" — ver "Empezar un turno desde /inicio" más
+  abajo). **Sin caja y sin nivel.** Suma
+  `getAgendaAction(businessToday())` al `Promise.all` que ya había y resuelve
+  los nombres de servicio con el catálogo que la página ya traía: cero
+  consultas nuevas. Sigue pidiendo la caja aunque no la muestre, porque
+  `TimerList` necesita el `cashSessionId` para cobrar. Si fallan las
+  estadísticas o la agenda, la pantalla igual renderiza.
+- **`/caja`:** cubo relleno con el saldo y tres sub-cubos (Inicial /
+  Ingresos / Egresos) adentro; `_components/CashActionsBento.tsx` con los
+  tres cubos de acción (Ingreso · Egreso · Vender) que despliegan **en
+  línea** los formularios de la spec 07 — que pasaron a ser controlados
+  (`TransactionInlineForm` recibe el `type` por prop en vez de tener su
+  propio selector; los dos reciben `onClose`); y
+  `_components/CashMovements.tsx`, la lista de los últimos movimientos.
+  `OpenCashView` queda como estaba: es una pantalla de un solo foco (spec
+  04), no una grilla.
+- **`/estadisticas`:** `OwnerDashboard` con cubo relleno de ingresos del
+  rango, dos cubos (Cortes / Ticket promedio), fila fina de Promedio diario
+  y el cubo de Equipo con las barras que ya existían. `BarberDashboard` con
+  dos cubos y el cubo relleno de nivel + racha — **el nivel vive acá**, que
+  es el único lugar con espacio para explicar la ventana móvil de 30 días.
+
+**Dato nuevo — `getCashMovementsAction(sessionId)`** en
+`src/actions/cash.actions.ts`: los últimos 8 movimientos de una caja
+propia, del más nuevo al más viejo. Sin migración: `transactions` ya tenía
+`description` y `created_at` desde la spec 05 y `category` desde la 09. No
+repite filtro por usuario porque `transactions_select_own` resuelve el
+aislamiento con un EXISTS contra la `cash_session` referenciada — atajo que
+**no** vale para `appointments` ni `cash_sessions`, donde la spec 08 abrió
+el select al dueño. El saldo sigue saliendo de `getCashBalanceAction`, que
+suma en la base: la lista está recortada y sumarla daría otro número.
+
+**Formateadores de fecha centralizados:** `formatBusinessDateLabel`,
+`formatBusinessTime` y `formatBusinessDateTime` pasaron a
+`src/lib/dates.ts`; `AgendaView`, `AppointmentRow` y `caja/page.tsx` tenían
+cada uno su propio `Intl.DateTimeFormat` con la zona a mano. Dos cosas que
+quedaron a la vista al unificar: `es-PY` formatea la hora en **12 horas**
+("3:30 p. m."), que es lo que la app muestra desde la spec 06 y se dejó
+igual; y Paraguay dejó de mover el reloj en 2024, así que está fijo en
+UTC−3.
+
+**Qué se verificó (2026-09-20):** `npm run lint`, `npm run typecheck` y
+`npm test` (203 tests, 19 archivos) en verde, y `npm run build` completo
+con las 14 rutas. El mecanismo del tema se probó contra el server de
+producción: sin cookie da `data-theme="light"`, con `clippr-theme=dark` da
+`dark`, una cookie basura cae en claro, y el `theme-color` acompaña
+(`#ffffff` / `#0f141b`). En el CSS servido están el selector
+`[data-theme=dark]`, los seis valores de la paleta oscura, los dos
+`color-scheme` y las seis utilidades nuevas.
+
+**Qué NO se verificó:** el recorrido visual de las pantallas autenticadas
+(`/inicio`, `/caja`, `/estadisticas`, `/mas`) en los dos temas, y el
+contraste real de los cubos rellenos en oscuro. Requiere una sesión
+iniciada en el navegador, que esta pasada no pudo hacer. Es lo primero a
+mirar en la próxima sesión.
+
+### Empezar un turno desde /inicio (implementado)
+
+Pedido del usuario del 2026-09-20: poder arrancar el corte de un turno
+agendado sin salir de `/inicio`. Abajo del pedido había un hueco de modelo:
+**un turno agendado no se podía cronometrar** — el temporizador existía sólo
+para el cliente de paso, y el turno saltaba de `scheduled` a `completed` con
+"Cobrar" en `/agenda`. Ver `docs/decisiones.md` (2026-09-20, cuatro
+entradas). **Sin migraciones.**
+
+**El temporizador se vincula al turno** (`src/store/timerStore.ts`): `Timer`
+gana `appointmentId` y `serviceId` opcionales, y `startTimer` pasa a recibir
+un objeto. **Sin `appointmentId` es un walk-in**, igual que antes, así que
+lo que ya estaba en `localStorage` sigue andando sin migrar nada. El store
+no permite dos temporizadores para el mismo turno (el doble tap en un
+celular pasa): devuelve el que ya estaba corriendo.
+
+**El flujo:** "Empezar" en la fila de `/inicio` →
+`startTimer({ appointmentId, serviceId, label: clientName })` → el turno
+desaparece de "Lo que viene" y aparece como temporizador con el cliente y el
+servicio → "Finalizar" → `FinishAppointmentForm` cobra con
+`completeScheduledAppointmentAction`, que ya existía. El botón **no** exige
+caja abierta: arrancar el contador es estado local y tiene que funcionar con
+la red caída (regla 4); la caja se pide recién al cobrar.
+
+**Componentes:**
+
+- `UpcomingAppointments.tsx` pasó de Server Component a **client
+  component**: el filtro de "ya está corriendo" depende del store. Los datos
+  siguen bajando por props desde el servidor. Antes de rehidratar muestra
+  **todos** los turnos, que es lo que renderizó el servidor — filtrar con el
+  store vacío daría un HTML distinto y React tiraría un error de hidratación.
+- `TimerCard.tsx` elige el formulario de cierre según `timer.appointmentId`,
+  y muestra el servicio y el precio cuando el timer es de un turno.
+- `FinishAppointmentForm.tsx` (nuevo) no pregunta nada y ofrece **Descartar**
+  y **Reintentar** ante cualquier error, sin mirar el texto del mensaje: el
+  caso a cubrir es el turno cobrado o cancelado desde `/agenda` mientras el
+  timer corría (`CL004`), que antes dejaba un temporizador imposible de
+  cerrar. Descartar no pierde plata: si el turno sigue agendado se cobra
+  desde `/agenda`.
+- `SinCajaAviso.tsx` (nuevo): el aviso de caja cerrada, extraído de
+  `FinishWalkinForm` para que lo usen los dos formularios.
+- `TimerList` recibe ahora **todos** los servicios y filtra los activos
+  internamente para el `select` del walk-in (mismo patrón que `AgendaView`):
+  un turno en curso puede apuntar a un servicio que se desactivó después y
+  su nombre igual tiene que mostrarse.
+
+**Un bug aparte, del mismo día:** las tres acciones de `agenda.actions.ts`
+revalidaban sólo `/agenda`. Como `/inicio` también lista esos turnos desde
+el rediseño bento, agendar en `/agenda` dejaba a `/inicio` con la lista
+vieja. Ahora las tres revalidan `/inicio` también.
+
+**Una trampa del stack que costó un 500:** `useTimerStore.persist` **no
+existe en el servidor** — sin `localStorage`, el middleware `persist` de
+Zustand devuelve el store pelado. Leerlo en el inicializador de un
+`useState` (o sea, durante el render, que para un client component también
+corre en el servidor) tumbó `/inicio`. Los accesos van con `?.` y hay un
+test que lo fija. Hermana de la trampa de `crypto.randomUUID` de la spec 09.
+
+**Qué se verificó:** lint, typecheck y **223 tests** (nuevos: el store
+completo, incluida la regresión de SSR; "Empezar" en
+`UpcomingAppointments`; y `FinishAppointmentForm`). En el dev server contra
+el proyecto real, `/inicio` sirve 200 sin errores después del arreglo.
+**Falta** el recorrido a mano del flujo completo con sesión iniciada
+(empezar, F5 con el timer corriendo, cobrar y verificar la `transaction`).
+
 ## Modelo de Datos
 
 Entidades principales enfocadas en resolver el modelo Multi-Tenant, los turnos y la gestión individual de caja:
@@ -502,7 +804,11 @@ Entidades principales enfocadas en resolver el modelo Multi-Tenant, los turnos y
   - Índice único parcial `one_open_session_per_user` (`user_id` WHERE
     `status = 'open'`): un usuario no puede tener más de una caja abierta.
 - **Transaction (Movimiento de Caja):**
-  - `id`, `cash_session_id`, `type` (income, expense), `amount`, `description`, `created_at`
+  - `id`, `cash_session_id`, `type` (income, expense), `category` (service,
+    product, manual), `amount`, `description`, `created_at`
+  - `category` (spec 09) es lo que permite un ticket promedio que no mezcle
+    cortes con ventas de productos ni con propinas: antes eso se deducía del
+    prefijo de `description`.
 
 ## Estructura de Carpetas
 
@@ -531,15 +837,19 @@ Estructura basada en Next.js App Router, separando claramente la lógica de nego
       /caja           # Apertura/cierre de CashSessions, movimientos y ventas (implementado, specs 04 y 07)
       /productos      # Catálogo de productos y stock (implementado, spec 07)
       /mas            # Catch-all: Servicios, Productos, Equipo, Cerrar sesión (implementado, spec 05.5)
-      /estadisticas   # Reportes e insights (vacío, .gitkeep — fuera de la barra por ahora)
+      /estadisticas   # Dashboards por rol y gamificación (implementado, spec 08)
   /components
-    /ui               # Componentes base reutilizables (Button, Input, Switch, BottomNav)
+    /ui               # Componentes base reutilizables (Button, Input, Switch, BottomNav,
+                      #   Tile — el cubo bento, ThemeSwitch — modo oscuro)
     /forms            # useAmountInput.ts (monto con separador de miles, spec 07)
-    /timers           # TimerList.tsx, TimerCard.tsx, FinishWalkinForm.tsx (implementado, spec 05)
+    /timers           # TimerList.tsx, TimerCard.tsx, FinishWalkinForm.tsx (spec 05),
+                      #   FinishAppointmentForm.tsx y SinCajaAviso.tsx (2026-09-20)
   /lib
     /supabase         # Clientes de Supabase: client.ts (browser), server.ts (servidor), admin.ts (Service Role Key, solo servidor)
     utils.ts          # Funciones utilitarias generales (incluye formatGuaranies)
-    dates.ts          # Fechas del negocio en America/Asuncion (+ dates.test.ts)
+    dates.ts          # Fechas del negocio en America/Asuncion, incluido el formateo
+                      #   para pantalla (+ dates.test.ts)
+    theme.ts          # Cookie y tipo del tema claro/oscuro (2026-09-20)
   /actions            # Server Actions — auth, service, product, team, cash, walkin, agenda (.actions.ts, implementados)
   /store              # Estado global del frontend (Zustand) — timerStore.ts (implementado, spec 05)
   /types              # Definiciones de tipos e interfaces TypeScript
