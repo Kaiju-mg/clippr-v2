@@ -2,11 +2,11 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { completeWalkinAction } from "@/actions/walkin.actions";
 import { formatGuaranies } from "@/lib/utils";
+import { SinCajaAviso } from "./SinCajaAviso";
 import type { Service } from "@/types";
 import type { Timer } from "@/store/timerStore";
 
@@ -37,21 +37,7 @@ export function FinishWalkinForm({
   const [isLoading, setIsLoading] = useState(false);
 
   if (!cashSessionId) {
-    return (
-      <div className="bg-background mt-3 flex flex-col gap-3 rounded-lg p-3.5">
-        <p role="alert" className="text-danger text-sm">
-          Debes abrir tu caja diaria antes de cobrar un corte.
-        </p>
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onCancel}>
-            Volver
-          </Button>
-          <Link href="/caja">
-            <Button type="button">Ir a caja</Button>
-          </Link>
-        </div>
-      </div>
-    );
+    return <SinCajaAviso onCancel={onCancel} />;
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {

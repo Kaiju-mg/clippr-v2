@@ -3,12 +3,16 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { FinishWalkinForm } from "./FinishWalkinForm";
+import { FinishAppointmentForm } from "./FinishAppointmentForm";
 import { useTimerStore, type Timer } from "@/store/timerStore";
+import { formatGuaranies } from "@/lib/utils";
 import type { Service } from "@/types";
 
 interface TimerCardProps {
   timer: Timer;
   cashSessionId: string | null;
+  /** Todos los servicios, activos o no: un turno agendado puede apuntar a
+   *  uno que se desactivó después y su nombre igual tiene que mostrarse. */
   services: Service[];
 }
 
@@ -44,12 +48,28 @@ export function TimerCard({ timer, cashSessionId, services }: TimerCardProps) {
     setIsFinishing(false);
   }
 
+  // Un timer con `appointmentId` viene de un turno agendado (se arrancó
+  // desde /inicio): ya sabe su servicio y su cliente, así que se cierra con
+  // otro formulario y cobra por la acción de la agenda, no creando un
+  // walk-in nuevo.
+  const esTurnoAgendado = Boolean(timer.appointmentId);
+  const service = timer.serviceId
+    ? services.find((item) => item.id === timer.serviceId)
+    : undefined;
+
   return (
-    <div className="border-line bg-surface-2 rounded-lg border p-4">
+    <div className="border-line bg-surface-2 rounded-tile border p-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex flex-col">
+        <div className="flex min-w-0 flex-col">
           {timer.label && (
-            <span className="text-muted text-sm">{timer.label}</span>
+            <span className="truncate text-[15px] font-medium">
+              {timer.label}
+            </span>
+          )}
+          {esTurnoAgendado && service && (
+            <span className="text-muted truncate text-[13px]">
+              {service.name} · {formatGuaranies(service.price)}
+            </span>
           )}
           <span className="font-display text-3xl font-semibold tabular-nums">
             {formatElapsed(elapsedMs)}
@@ -66,15 +86,25 @@ export function TimerCard({ timer, cashSessionId, services }: TimerCardProps) {
         )}
       </div>
 
-      {isFinishing && (
-        <FinishWalkinForm
-          timer={timer}
-          cashSessionId={cashSessionId}
-          services={services}
-          onCancel={() => setIsFinishing(false)}
-          onDone={handleDone}
-        />
-      )}
+      {isFinishing &&
+        (esTurnoAgendado ? (
+          <FinishAppointmentForm
+            timer={timer}
+            cashSessionId={cashSessionId}
+            service={service}
+            onCancel={() => setIsFinishing(false)}
+            onDone={handleDone}
+            onDiscard={handleDone}
+          />
+        ) : (
+          <FinishWalkinForm
+            timer={timer}
+            cashSessionId={cashSessionId}
+            services={services.filter((item) => item.is_active)}
+            onCancel={() => setIsFinishing(false)}
+            onDone={handleDone}
+          />
+        ))}
     </div>
   );
 }

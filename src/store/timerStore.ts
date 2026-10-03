@@ -19,27 +19,61 @@
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { randomId } from "@/lib/ids";
 
 export interface Timer {
   id: string;
   startTime: number;
   label?: string;
+  /**
+   * Turno agendado que este temporizador está cronometrando. **Sin esto es
+   * un walk-in**, que es cómo funcionaba el store entero hasta el
+   * 2026-09-20 — por eso es opcional y no hay que migrar lo que ya esté
+   * guardado en `localStorage`. Con `appointmentId`, el cobro va por
+   * `completeScheduledAppointmentAction` en vez de crear un turno nuevo.
+   */
+  appointmentId?: string;
+  /** Servicio del turno, para mostrar nombre y precio en la tarjeta. */
+  serviceId?: string;
+}
+
+export interface StartTimerInput {
+  label?: string;
+  appointmentId?: string;
+  serviceId?: string;
 }
 
 interface TimerState {
   timers: Timer[];
-  startTimer: (label?: string) => string;
+  startTimer: (input?: StartTimerInput) => string;
   removeTimer: (id: string) => void;
 }
 
 export const useTimerStore = create<TimerState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       timers: [],
-      startTimer: (label) => {
-        const id = crypto.randomUUID();
+      startTimer: (input = {}) => {
+        const { label, appointmentId, serviceId } = input;
+
+        // Un turno agendado no puede tener dos temporizadores: el doble tap
+        // pasa, y más en un celular. Se devuelve el que ya estaba corriendo.
+        if (appointmentId) {
+          const existente = get().timers.find(
+            (timer) => timer.appointmentId === appointmentId,
+          );
+          if (existente) return existente.id;
+        }
+
+        // randomId y no crypto.randomUUID: esta última no existe fuera de un
+        // contexto seguro, y la app se prueba por IP con HTTP plano desde el
+        // celular. Ver src/lib/ids.ts.
+        const id = randomId();
         set((state) => ({
-          timers: [...state.timers, { id, startTime: Date.now(), label }],
+          timers: [
+            ...state.timers,
+            { id, startTime: Date.now(), label, appointmentId, serviceId },
+          ],
         }));
         return id;
       },
@@ -64,19 +98,57 @@ export const useTimerStore = create<TimerState>()(
 );
 
 /**
+ * Una sola rehidratación por carga de página, aunque el hook se use en
+ * varios componentes: desde el 2026-09-20 lo llaman `TimerList` y
+ * `UpcomingAppointments`, y sin este flag cada uno leería `localStorage`
+ * por su cuenta.
+ */
+let rehidratacionPedida = false;
+
+/**
+ * **`useTimerStore.persist` no existe en el servidor.** Cuando no hay
+ * `localStorage`, el middleware `persist` de Zustand avisa por consola y
+ * devuelve el store pelado, sin colgarle la API de persistencia. Así que
+ * cualquier lectura de `.persist` que corra **durante el render** —y el
+ * render de un client component también pasa por el servidor— revienta con
+ * "Cannot read properties of undefined". Pasó: tumbó `/inicio` con un 500
+ * el 2026-09-20. Por eso el `?.` en los tres accesos.
+ */
+function persistApi() {
+  return useTimerStore.persist as typeof useTimerStore.persist | undefined;
+}
+
+/**
  * Dispara la rehidratación desde localStorage después del mount (nunca en
- * SSR) y devuelve si ya terminó. Usarlo en el componente raíz de la
- * pantalla de temporizadores para evitar el parpadeo de "sin
- * temporizadores" antes de que se restaure el estado guardado.
+ * SSR) y devuelve si ya terminó. Usarlo en cualquier componente que lea el
+ * store, para evitar el parpadeo de "sin temporizadores" antes de que se
+ * restaure el estado guardado.
+ *
+ * Arranca en `false` en el servidor y en el primer render del cliente, que
+ * es lo que evita el error de hidratación; en un mount posterior (navegar
+ * de /caja a /inicio sin recargar) el store ya está hidratado y arranca en
+ * `true`, para no mostrar un parpadeo de la lista sin filtrar.
  */
 export function useTimerStoreHydrated(): boolean {
-  const [hasHydrated, setHasHydrated] = useState(false);
+  const [hasHydrated, setHasHydrated] = useState(
+    () => persistApi()?.hasHydrated() ?? false,
+  );
 
   useEffect(() => {
-    const unsubscribe = useTimerStore.persist.onFinishHydration(() =>
-      setHasHydrated(true),
-    );
-    void useTimerStore.persist.rehydrate();
+    const persist = persistApi();
+    if (!persist) return;
+
+    if (persist.hasHydrated()) {
+      setHasHydrated(true);
+      return;
+    }
+
+    const unsubscribe = persist.onFinishHydration(() => setHasHydrated(true));
+
+    if (!rehidratacionPedida) {
+      rehidratacionPedida = true;
+      void persist.rehydrate();
+    }
 
     return unsubscribe;
   }, []);
