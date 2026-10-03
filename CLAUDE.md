@@ -44,6 +44,8 @@ npm run lint       # eslint .   (no usar `next lint`, deprecado en Next 16)
 npm run typecheck  # tsc --noEmit
 npm run format     # prettier --write . (docs/ está en .prettierignore)
 npm run build
+npm run preview    # build de Cloudflare (OpenNext) servido en local con wrangler
+npm run deploy     # build de Cloudflare y publica el Worker clippr-v2
 ```
 
 Correr `npm run lint && npm run typecheck && npm test` antes de dar una tarea por terminada. `.env.local` no hace falta para levantar el server ni el health check; sí para auth/datos (ver `.env.example`).

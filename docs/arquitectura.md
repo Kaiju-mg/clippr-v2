@@ -773,6 +773,51 @@ el proyecto real, `/inicio` sirve 200 sin errores después del arreglo.
 **Falta** el recorrido a mano del flujo completo con sesión iniciada
 (empezar, F5 con el timer corriendo, cobrar y verificar la `transaction`).
 
+### Deploy en Cloudflare Workers (implementado)
+
+La app se publica en **Cloudflare Workers** con el adaptador OpenNext
+(`@opennextjs/cloudflare`), no en Vercel: el plan gratis de Vercel prohíbe
+el uso comercial (ver `docs/decisiones.md` 2026-10-03).
+
+- **Configuración:** `wrangler.jsonc` (Worker `clippr-v2`, `nodejs_compat`,
+  `observability` prendido para medir la CPU por pedido),
+  `open-next.config.ts` sin caché incremental (todas las rutas son
+  dinámicas: leen la cookie de sesión) y `public/_headers` con caché
+  inmutable para `/_next/static`. El nombre `clippr-v2` es a propósito: en
+  la misma cuenta de Cloudflare hay otro proyecto, y un Worker con el mismo
+  nombre lo pisaría.
+- **Variables:** las `NEXT_PUBLIC_*` se incrustan al compilar desde
+  `.env.local`; `SUPABASE_SERVICE_ROLE_KEY` es un secreto del Worker
+  (`wrangler secret put`) y en local va en `.dev.vars` (ignorado por git).
+- **Publicado en** https://clippr-v2.sistemalety.workers.dev, plan gratis.
+  Se pasa al plan de US$5/mes si la CPU por pedido no entra en los 10 ms del
+  gratis, o con el primer cliente que pague. La cuota de 100.000
+  pedidos/día del plan gratis es **por cuenta** y se comparte con el otro
+  proyecto.
+- **PWA:** la raíz `/` redirige a `/inicio` (antes mostraba la página del
+  scaffolding y era lo que abría la app instalada) y el `start_url` del
+  manifest apunta directo a `/inicio`.
+- **Base de datos:** la misma de Supabase que se usó para desarrollar (un
+  solo proyecto). Ver `docs/deuda-tecnica.md`.
+
+### Campos de formulario con etiqueta flotante (implementado)
+
+Elegidos en el Artifact "Campos de Clippr" (2026-10-03) entre seis estilos.
+
+- `Input` (`src/components/ui/Input.tsx`): caja de 58 px, radio de 14 px,
+  borde `--line-strong` (token nuevo) y, con foco, borde `accent-ink` con
+  halo. El nombre del campo vive adentro y sube achicado cuando hay valor o
+  foco, con `peer-placeholder-shown` / `peer-autofill` / `peer-focus` (el
+  orden de esos variantes en el CSS compilado importa, y se verificó). Todo
+  `Input` lleva un placeholder (un espacio si no se pasa uno); los ejemplos
+  tipo "Ej. Juan Pérez" sólo aparecen al tocar el campo. Prop `prefix` para
+  el "Gs." del monto.
+- `Select` (`src/components/ui/Select.tsx`): la misma caja, etiqueta siempre
+  arriba y flecha de lucide en vez de la nativa del teléfono.
+- Login, registro, el monto de ingreso/egreso y los tres `<select>` sueltos
+  (servicio en agenda, producto en caja, nivel del barbero) pasaron a estos
+  componentes. El monto grande de "Abrir caja" (`OpenCashView`) no cambió.
+
 ### Poste de la racha (implementado)
 
 Animación de la racha, elegida en dos Artifacts ("Animaciones de la racha"
@@ -880,23 +925,29 @@ Estructura basada en Next.js App Router, separando claramente la lógica de nego
       /mas            # Catch-all: Servicios, Productos, Equipo, Cerrar sesión (implementado, spec 05.5)
       /estadisticas   # Dashboards por rol y gamificación (implementado, spec 08)
   /components
-    /ui               # Componentes base reutilizables (Button, Input, Switch, BottomNav,
-                      #   Tile — el cubo bento, ThemeSwitch — modo oscuro)
+    /ui               # Componentes base reutilizables (Button, Input, Select, Switch,
+                      #   BottomNav, Tile — el cubo bento, ThemeSwitch — modo oscuro,
+                      #   BarberPole — el poste de la racha)
     /forms            # useAmountInput.ts (monto con separador de miles, spec 07)
     /timers           # TimerList.tsx, TimerCard.tsx, FinishWalkinForm.tsx (spec 05),
                       #   FinishAppointmentForm.tsx y SinCajaAviso.tsx (2026-09-20)
+    /streak           # StreakCelebration.tsx: la hoja del poste al cerrar la caja (2026-10-03)
   /lib
     /supabase         # Clientes de Supabase: client.ts (browser), server.ts (servidor), admin.ts (Service Role Key, solo servidor)
     utils.ts          # Funciones utilitarias generales (incluye formatGuaranies)
     dates.ts          # Fechas del negocio en America/Asuncion, incluido el formateo
                       #   para pantalla (+ dates.test.ts)
     theme.ts          # Cookie y tipo del tema claro/oscuro (2026-09-20)
+    streaks.ts        # Reglas de la racha: día de gracia, estado y niveles del poste
+    streak-days.ts    # Consultas de "qué días trabajó" para la racha (sólo servidor)
   /actions            # Server Actions — auth, service, product, team, cash, walkin, agenda (.actions.ts, implementados)
-  /store              # Estado global del frontend (Zustand) — timerStore.ts (implementado, spec 05)
+  /store              # Estado global del frontend (Zustand) — timerStore.ts (spec 05) y
+                      #   streakCelebrationStore.ts (la hoja del poste, 2026-10-03)
   /types              # Definiciones de tipos e interfaces TypeScript
 
 # Raíz: next.config.ts, tsconfig.json, eslint.config.mjs, vitest.config.ts,
-#       vitest.setup.ts, postcss.config.mjs, .prettierrc.json, .env.example
+#       vitest.setup.ts, postcss.config.mjs, .prettierrc.json, .env.example,
+#       wrangler.jsonc y open-next.config.ts (deploy en Cloudflare)
 ```
 
 `(auth)`, `(dashboard)/layout.tsx`, `(dashboard)/inicio`,

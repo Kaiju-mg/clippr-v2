@@ -137,3 +137,59 @@ Ver `docs/arquitectura.md` sección "Bento UI y Modo Oscuro" y
 `docs/decisiones.md` (2026-09-20, cinco entradas: bento, modo oscuro,
 los tres tokens de acento, la caja fuera de `/inicio` y los
 formateadores de fecha).
+
+### Deploy, campos y poste de la racha (2026-10-03, implementado — no son rebanadas del backlog)
+Tres cosas pedidas en la misma sesión, pensando en el piloto con barberos
+reales:
+- **Deploy en Cloudflare Workers** (OpenNext), plan gratis para probar, en
+  https://clippr-v2.sistemalety.workers.dev. La raíz y la PWA abren
+  `/inicio`.
+- **Campos con etiqueta flotante** (`Input`/`Select`), elegidos en el
+  muestrario "Campos de Clippr".
+- **Poste de barbería para la racha** en /inicio, /estadisticas y al cerrar
+  la caja, elegido en los muestrarios "Animaciones de la racha" y "Poste de
+  la racha". **Sin migraciones.**
+- **Test:** 263 tests de Vitest, build y capturas en los dos temas. **Falta
+  el recorrido con sesión iniciada** en el celular.
+
+Ver `docs/arquitectura.md` secciones "Deploy en Cloudflare Workers",
+"Campos de formulario con etiqueta flotante" y "Poste de la racha", y
+`docs/decisiones.md` (2026-10-03).
+
+### Próximo: Piloto con barberos reales (pendiente)
+Lo que falta antes de darle la app a una o dos barberías conocidas, gratis
+y con acompañamiento:
+- Recorrer la app entera con sesión iniciada en un celular, en los dos
+  temas, y medir la **CPU por pedido** en el dashboard de Cloudflare
+  (Workers & Pages → clippr-v2 → Metrics) para decidir entre el plan gratis
+  y el de US$5.
+- Separar o limpiar la base de producción (hoy es la misma de desarrollo,
+  con datos de prueba y cuentas con `Clippr2026!`) y resolver los respaldos.
+- Cerrar el `update` de `products` al dueño (migración chica).
+- Pasar `feature/deploy-cloudflare` a `main` con un PR.
+
+Ver `docs/deuda-tecnica.md` (Alta prioridad).
+
+### Próximo: Planes y cobro, etapa 1 (propuesta, sin implementar)
+Hoy la única pieza es `barbershops.subscription_plan` (`trial`/`pro`/`team`,
+default `trial`): no hay vencimiento, ni límites por plan, ni cobro. Lo que
+se habló el 2026-10-03, **sin decidir todavía**:
+- **Planes:** Trial (todo, 14 a 30 días), Pro (barbero independiente, 1
+  usuario) y Equipo (dueño + barberos, con un tope de barberos y un
+  adicional por cada extra). Lo que separa los planes es la **cantidad de
+  personas**, no las funciones. Precios de referencia: los de la v1 (Gs.
+  75.000 y Gs. 150.000), sin validar. No hay herramientas parecidas en
+  Paraguay y todavía no se sabe cuánto pagarían: se valida en el piloto (si
+  la siguen usando sin que nadie insista, más cuatro preguntas de precio al
+  final) y con un **precio fundador** para las primeras 5 a 10 barberías.
+- **Cobro manual** al principio: transferencia o QR, y marcar a mano
+  `pagado_hasta` en la barbería. Hace falta programar: tabla de planes en la
+  base (regla 6), `pagado_hasta` (la prueba gratis es esa misma fecha),
+  avisos de vencimiento y, si no paga, no poder abrir una caja nueva pero
+  **seguir viendo todos sus datos**. Después, link de pago (Pagopar) con
+  webhook; débito automático con tarjeta (Bancard) recién con muchos
+  clientes. Stripe no acepta comercios paraguayos.
+- **Antes del primer cobro:** RUC y factura electrónica; consultar a un
+  contador.
+
+Escribir la spec en `docs/specs/` cuando el piloto confirme los precios.

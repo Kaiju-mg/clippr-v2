@@ -27,6 +27,23 @@ Las variables de Supabase no son necesarias para levantar el server ni para el h
 | `npm run lint`       | ESLint (config de Next + Prettier)            |
 | `npm run format`     | Formatea con Prettier                         |
 | `npm run typecheck`  | `tsc --noEmit`                                |
+| `npm run preview`    | Build de Cloudflare y lo sirve en local       |
+| `npm run deploy`     | Build de Cloudflare y lo publica              |
+
+## Deploy
+
+La app corre en **Cloudflare Workers** con el adaptador [OpenNext](https://opennext.js.org/cloudflare) (`wrangler.jsonc`, Worker `clippr-v2`). Ver `docs/decisiones.md` (2026-10-03) por qué no Vercel.
+
+```bash
+npx wrangler login                                  # una vez, abre el navegador
+npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY   # una vez por Worker
+npm run deploy                                      # compila y publica
+```
+
+- Las `NEXT_PUBLIC_*` se incrustan al compilar: salen de `.env.local`.
+- `SUPABASE_SERVICE_ROLE_KEY` va como secreto del Worker; en local, para `npm run preview`, en `.dev.vars` (ignorado por git, mismo formato que `.env.local`).
+- OpenNext avisa que en Windows no es del todo compatible y recomienda WSL. Hasta ahora compila y publica bien desde Windows.
+- Si un servidor local (`wrangler dev` o `next dev`) queda colgado, el build falla con `EPERM` al borrar `.open-next/`: cerrar esos procesos y reintentar.
 
 ## Health check
 
@@ -42,13 +59,14 @@ src/
   app/                 # Rutas (App Router)
     api/health/        # Health check
     (auth)/            # Login/registro
-    (dashboard)/       # inicio, agenda, caja, servicios, equipo, mas, estadisticas (vacío)
-  components/          # ui, forms, timers
+    (dashboard)/       # inicio, agenda, caja, servicios, productos, equipo, mas, estadisticas
+  components/          # ui (incluye Input/Select y BarberPole), forms, timers, streak
   lib/supabase/        # clientes browser, server y admin
   lib/utils.ts         # formatGuaranies, cn
   lib/dates.ts         # fechas del negocio en America/Asuncion
-  actions/             # Server Actions (lógica de negocio: auth, servicios, equipo, caja, walk-ins, agenda)
-  store/               # Estado global (Zustand: timers)
+  lib/streaks.ts       # reglas de la racha (día de gracia, estado y niveles del poste)
+  actions/             # Server Actions (auth, servicios, productos, equipo, caja, walk-ins, agenda, estadísticas)
+  store/               # Estado global (Zustand: timers y la hoja del poste)
   types/               # Tipos del dominio
 supabase/migrations/   # SQL versionado (schema + RLS), aplicar con `supabase db push`
 ```
