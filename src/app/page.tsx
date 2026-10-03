@@ -1,11 +1,11 @@
+import { redirect } from "next/navigation";
+
+/**
+ * La raíz no tiene pantalla propia: manda a /inicio, y si no hay sesión el
+ * guard de `(dashboard)/layout.tsx` la rebota a /login. Antes quedaba la
+ * página del scaffolding ("Health check en /api/health"), que era lo que
+ * abría la app instalada en el celular.
+ */
 export default function Home() {
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-8">
-      <h1 className="text-2xl font-semibold">Clippr v2</h1>
-      <p className="text-sm opacity-70">
-        Scaffolding listo. Health check en{" "}
-        <code className="bg-surface-2 rounded px-1">/api/health</code>.
-      </p>
-    </main>
-  );
+  redirect("/inicio");
 }

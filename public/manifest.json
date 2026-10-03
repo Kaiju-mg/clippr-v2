@@ -2,7 +2,7 @@
   "name": "Clippr",
   "short_name": "Clippr",
   "description": "Gestión de turnos y caja para barberías",
-  "start_url": "/",
+  "start_url": "/inicio",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0a0a0a",
