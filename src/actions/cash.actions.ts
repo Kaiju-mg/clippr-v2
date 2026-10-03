@@ -2,9 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { businessDateOf, businessRangeUtc, shiftDateISO } from "@/lib/dates";
 import { LEVEL_WINDOW_DAYS, levelForCuts } from "@/lib/levels";
 import { nextStreakCount } from "@/lib/streaks";
+import {
+  CAJA_INVALIDA,
+  CANTIDAD_INVALIDA,
+  PRODUCTO_INVALIDO,
+  SIN_SESION,
+  STOCK_INSUFICIENTE,
+  UNIQUE_VIOLATION,
+} from "@/lib/db-errors";
 import type { CashSession, Transaction, TransactionType } from "@/types";
 
 export type CashActionResult<T> =
@@ -19,16 +28,6 @@ const MENSAJE_SALDO_INVALIDO =
 const MENSAJE_CAJA_CERRADA =
   "Tenés que abrir tu caja antes de registrar movimientos.";
 const MENSAJE_PRODUCTO_INVALIDO = "Producto no encontrado o inactivo.";
-const MENSAJE_STOCK_CAMBIO =
-  "El stock cambió mientras vendías. Intentá de nuevo.";
-const MENSAJE_VENTA_SIN_CAJA =
-  "Se descontó el stock, pero la venta no se pudo reflejar en la caja. Avisá para revisar el desfase.";
-
-// Códigos SQLSTATE de Postgres: violación de restricción única (el índice
-// parcial one_open_session_per_user de la migración) y de un `check` (ej.
-// products.stock >= 0).
-const UNIQUE_VIOLATION = "23505";
-const CHECK_VIOLATION = "23514";
 
 function validateInitialBalance(value: number): string | null {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
@@ -175,12 +174,7 @@ async function updateStreakAndLevel(
   // Una caja sin un solo ingreso no es una jornada trabajada: no suma ni
   // rompe la racha, pero el nivel igual se recalcula.
   if (incomeOfSession <= 0) {
-    await applyStreakAndLevel(
-      supabase,
-      profile.id,
-      profile.streak_count,
-      level,
-    );
+    await applyStreakAndLevel(profile.id, profile.streak_count, level);
     return;
   }
 
@@ -227,7 +221,7 @@ async function updateStreakAndLevel(
     sameDayAlreadyCounted,
   );
 
-  await applyStreakAndLevel(supabase, profile.id, streak, level);
+  await applyStreakAndLevel(profile.id, streak, level);
 }
 
 /**
@@ -270,19 +264,41 @@ async function businessDatesWithIncome(
   ];
 }
 
+/**
+ * Escribe la racha y el nivel calculados. Desde la spec 09 (paso 2) esto va
+ * con el cliente `service_role` y no con la sesión del barbero: `users` dejó
+ * de aceptar updates de `streak_count`/`level` desde `authenticated` (ver
+ * `20260920010000_users_update_hardening.sql`), justamente para que nadie
+ * pueda inflarse la racha desde la consola del navegador. La key de servicio
+ * nunca sale del servidor, así que el cálculo y la escritura quedan los dos
+ * de este lado (regla 1 de CLAUDE.md).
+ *
+ * Los cálculos de arriba siguen usando la sesión del usuario, acotados por
+ * RLS: sólo la escritura final necesita el privilegio extra.
+ *
+ * El try/catch no es decorativo: `createAdminClient()` tira si falta
+ * `SUPABASE_SERVICE_ROLE_KEY`, y sin él esa excepción subiría hasta
+ * `closeCashSessionAction` y le diría al barbero que el cierre falló cuando
+ * la caja ya está cerrada y con el saldo correcto en la base. La regla de la
+ * spec 08 sigue valiendo: perder un punto de racha nunca puede tumbar un
+ * cierre.
+ */
 async function applyStreakAndLevel(
-  supabase: SupabaseServerClient,
   userId: string,
   streakCount: number,
   level: string,
 ): Promise<void> {
-  const { error } = await supabase
-    .from("users")
-    .update({ streak_count: streakCount, level })
-    .eq("id", userId);
+  try {
+    const { error } = await createAdminClient()
+      .from("users")
+      .update({ streak_count: streakCount, level })
+      .eq("id", userId);
 
-  if (error) {
-    console.error("applyStreakAndLevel:", error.message);
+    if (error) {
+      console.error("applyStreakAndLevel:", error.message);
+    }
+  } catch (error) {
+    console.error("applyStreakAndLevel:", error);
   }
 }
 
@@ -321,6 +337,44 @@ export async function getCashBalanceAction(
   }
 
   return { success: true, data: balance };
+}
+
+/** Cuántos movimientos entran en la lista de la pantalla de caja. */
+const MOVIMIENTOS_VISIBLES = 8;
+
+/**
+ * Últimos movimientos de una caja propia, del más nuevo al más viejo. Es
+ * sólo lectura, para la lista de la pantalla: el saldo sigue saliendo de
+ * `getCashBalanceAction`, que suma en el servidor, y nunca de sumar esta
+ * lista en el cliente (regla 1 de CLAUDE.md) — entre otras cosas porque
+ * está recortada a los últimos ocho.
+ *
+ * No repite el filtro por usuario: `transactions_select_own` resuelve el
+ * aislamiento con un EXISTS contra la `cash_session` referenciada, así que
+ * pedir una `cash_session_id` ajena no devuelve filas. Ojo que ese atajo
+ * **no** vale para `appointments` ni `cash_sessions`, donde la spec 08
+ * abrió el select al dueño (ver docs/deuda-tecnica.md).
+ */
+export async function getCashMovementsAction(
+  sessionId: string,
+): Promise<CashActionResult<Transaction[]>> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("transactions")
+    .select(
+      "id, cash_session_id, type, category, amount, description, created_at",
+    )
+    .eq("cash_session_id", sessionId)
+    .order("created_at", { ascending: false })
+    .limit(MOVIMIENTOS_VISIBLES);
+
+  if (error) {
+    console.error("getCashMovementsAction:", error.message);
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
+  return { success: true, data: (data ?? []) as Transaction[] };
 }
 
 /**
@@ -534,6 +588,9 @@ function validateManualTransaction(
  * Registra un ingreso o egreso manual (ej. comprar café, una propina) en la
  * caja abierta del usuario. Entra solo en el saldo porque `computeBalance`
  * ya suma todas las `transactions` de la caja.
+ *
+ * Va con `category: "manual"` (spec 09, paso 3): una propina no es un corte,
+ * así que no tiene por qué entrar en el ticket promedio del dueño.
  */
 export async function registerTransactionAction(
   payload: ManualTransactionPayload,
@@ -559,6 +616,7 @@ export async function registerTransactionAction(
     .insert({
       cash_session_id: session.id,
       type: payload.type,
+      category: "manual",
       amount: payload.amount,
       description: payload.description.trim(),
     })
@@ -580,19 +638,37 @@ export interface SellProductPayload {
 }
 
 /**
- * Vende un producto: descuenta stock e inserta el ingreso en la caja
- * abierta. El monto sale de `products.price` leído acá (nunca del payload),
- * mismo criterio que completeWalkinAction.
+ * Mensaje de stock insuficiente a partir del error del RPC: el nombre del
+ * producto viaja en `message` y el stock restante en `details` (ver el
+ * `raise` de `sell_product_and_charge`). La copia se arma acá y no en la
+ * base: el texto que lee el barbero es cosa de la aplicación.
+ */
+function mensajeDeStock(name: string, details: unknown): string {
+  const stock = Number(details);
+  if (!Number.isFinite(stock) || stock <= 0) {
+    return `No queda stock de ${name}.`;
+  }
+  return `No hay stock suficiente de ${name} (quedan ${stock}).`;
+}
+
+/**
+ * Vende un producto: descuenta stock e inserta el ingreso en la caja abierta,
+ * en una sola llamada al RPC `sell_product_and_charge` (migración
+ * 20260920000000). Antes eran dos queries separadas y si el insert de la
+ * transacción fallaba quedaba stock descontado sin venta; ahora las dos
+ * escrituras van dentro de la misma transacción de Postgres y cualquier
+ * error las revierte (spec 09, paso 1).
  *
- * El descuento de stock es un update condicionado al stock recién leído
- * (`.eq("stock", ...)`): si otro barbero vendió en el medio, no matchea
- * ninguna fila y se pide reintentar, en vez de pisar su venta. El
- * `check (stock >= 0)` de la tabla es la última barrera.
+ * El `for update` del RPC también reemplaza al viejo update condicionado al
+ * stock leído: dos ventas simultáneas del último producto ya no compiten por
+ * la misma fila, la segunda espera y recién ahí lee el stock real. Eso saca
+ * de encima el "El stock cambió mientras vendías. Intentá de nuevo." que
+ * antes aparecía por una carrera que ahora no existe.
  *
- * *(Deuda técnica transaccional, spec 07 sección 5.2)*: sin RPC atómico,
- * son dos queries separadas. Si el insert de la transacción falla después
- * de descontar el stock, se devuelve un error explícito para revisar el
- * desfase a mano. Ver docs/deuda-tecnica.md.
+ * El monto sigue saliendo de `products.price`, leído por el RPC dentro de la
+ * transacción — nunca del payload. La caja tampoco la elige el cliente: se
+ * resuelve acá con `getOpenCashSessionId` y el RPC igual revalida que sea
+ * propia y esté abierta.
  */
 export async function sellProductAction(
   payload: SellProductPayload,
@@ -615,80 +691,38 @@ export async function sellProductAction(
     return { success: false, error: MENSAJE_CAJA_CERRADA };
   }
 
-  const { data: product, error: productError } = await supabase
-    .from("products")
-    .select("id, name, price, stock, is_active")
-    .eq("id", payload.productId)
-    .maybeSingle<{
-      id: string;
-      name: string;
-      price: number;
-      stock: number;
-      is_active: boolean;
-    }>();
-
-  if (productError) {
-    console.error("sellProductAction (products):", productError.message);
-    return { success: false, error: MENSAJE_ERROR_GENERICO };
-  }
-
-  if (!product || !product.is_active) {
-    return { success: false, error: MENSAJE_PRODUCTO_INVALIDO };
-  }
-
-  if (payload.quantity > product.stock) {
-    return {
-      success: false,
-      error:
-        product.stock === 0
-          ? `No queda stock de ${product.name}.`
-          : `No hay stock suficiente de ${product.name} (quedan ${product.stock}).`,
-    };
-  }
-
-  const { data: updated, error: stockError } = await supabase
-    .from("products")
-    .update({ stock: product.stock - payload.quantity })
-    .eq("id", product.id)
-    .eq("stock", product.stock)
-    .select("id")
-    .maybeSingle();
-
-  if (stockError) {
-    if (stockError.code === CHECK_VIOLATION) {
-      return { success: false, error: MENSAJE_STOCK_CAMBIO };
-    }
-    console.error("sellProductAction (stock):", stockError.message);
-    return { success: false, error: MENSAJE_ERROR_GENERICO };
-  }
-
-  if (!updated) {
-    return { success: false, error: MENSAJE_STOCK_CAMBIO };
-  }
-
-  const { data: created, error: transactionError } = await supabase
-    .from("transactions")
-    .insert({
-      cash_session_id: session.id,
-      type: "income",
-      amount: product.price * payload.quantity,
-      description:
-        payload.quantity > 1
-          ? `Venta: ${product.name} x${payload.quantity}`
-          : `Venta: ${product.name}`,
+  const { data, error } = await supabase
+    .rpc("sell_product_and_charge", {
+      p_product_id: payload.productId,
+      p_cash_session_id: session.id,
+      p_quantity: payload.quantity,
     })
-    .select()
     .single();
 
-  if (transactionError) {
-    console.error(
-      "sellProductAction (transactions):",
-      transactionError.message,
-    );
-    return { success: false, error: MENSAJE_VENTA_SIN_CAJA };
+  if (error) {
+    switch (error.code) {
+      case CAJA_INVALIDA:
+      case SIN_SESION:
+        return { success: false, error: MENSAJE_CAJA_CERRADA };
+      case PRODUCTO_INVALIDO:
+        return { success: false, error: MENSAJE_PRODUCTO_INVALIDO };
+      case STOCK_INSUFICIENTE:
+        return {
+          success: false,
+          error: mensajeDeStock(error.message, error.details),
+        };
+      case CANTIDAD_INVALIDA:
+        return {
+          success: false,
+          error: "La cantidad debe ser un número entero mayor a cero.",
+        };
+      default:
+        console.error("sellProductAction:", error.message);
+        return { success: false, error: MENSAJE_ERROR_GENERICO };
+    }
   }
 
   revalidatePath("/caja");
   revalidatePath("/productos");
-  return { success: true, data: created as Transaction };
+  return { success: true, data: data as Transaction };
 }

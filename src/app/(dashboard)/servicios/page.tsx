@@ -6,7 +6,7 @@ export default async function ServiciosPage() {
 
   if (!result.success) {
     return (
-      <p role="alert" className="p-4 text-sm text-red-600">
+      <p role="alert" className="text-danger p-4 text-sm">
         {result.error}
       </p>
     );

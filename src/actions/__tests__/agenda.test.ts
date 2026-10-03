@@ -90,8 +90,6 @@ function mockSupabase(builders: Record<string, QueryBuilderMock<unknown>>) {
 // Paraguay (UTC-3).
 const AHORA = new Date("2026-09-16T13:12:00.000Z");
 
-const CASH_SESSION_ABIERTA = { id: "cs1", status: "open" };
-const CASH_SESSION_CERRADA = { id: "cs1", status: "closed" };
 const SERVICIO_ACTIVO = {
   id: "svc1",
   name: "Corte Clásico",
@@ -111,47 +109,23 @@ const APPOINTMENT: Appointment = {
   status: "scheduled",
 };
 
-function turnoAgendado(startTime: string) {
-  return {
-    id: "apt1",
-    service_id: "svc1",
-    status: "scheduled",
-    start_time: startTime,
-  };
-}
-
-/** Arma los builders de un cobro completo; el select y el update de appointments comparten builder. */
-function mockCobro(
-  startTime: string,
-  transactionsError: { message: string } | null = null,
-) {
-  const cashSessionsBuilder = createBuilder({
-    data: CASH_SESSION_ABIERTA,
-    error: null,
-  });
-  const appointmentsBuilder = createBuilder<unknown>({
-    data: null,
-    error: null,
-  });
-  appointmentsBuilder.maybeSingle = vi
-    .fn()
-    .mockResolvedValueOnce({ data: turnoAgendado(startTime), error: null })
-    .mockResolvedValueOnce({
-      data: { ...APPOINTMENT, status: "completed" },
-      error: null,
-    });
-  const servicesBuilder = createBuilder({ data: SERVICIO_ACTIVO, error: null });
-  const transactionsBuilder = createBuilder({
-    data: null,
-    error: transactionsError,
-  });
-  mockSupabase({
-    cash_sessions: cashSessionsBuilder,
-    appointments: appointmentsBuilder,
-    services: servicesBuilder,
-    transactions: transactionsBuilder,
-  });
-  return { appointmentsBuilder, transactionsBuilder };
+/**
+ * Desde la spec 09, cobrar un turno agendado es una sola llamada:
+ * `supabase.rpc("complete_appointment_and_charge", ...).single()`. El update
+ * de `appointments` y el insert de `transactions` pasaron a la base, dentro
+ * de una transacción, así que acá solo se verifica qué se le manda al RPC y
+ * cómo se traduce lo que devuelve.
+ */
+function mockRpc(result: {
+  data: unknown;
+  error: { message: string; code?: string; details?: string } | null;
+}) {
+  const single = vi.fn(async () => result);
+  const rpc = vi.fn(() => ({ single }));
+  vi.mocked(createClient).mockResolvedValue({
+    rpc,
+  } as unknown as Awaited<ReturnType<typeof createClient>>);
+  return { rpc };
 }
 
 beforeEach(() => {
@@ -344,10 +318,50 @@ describe("scheduleAppointmentAction — happy path", () => {
   });
 });
 
-describe("completeScheduledAppointmentAction — caja y turno", () => {
-  it("rechaza si la caja no está abierta", async () => {
-    mockSupabase({
-      cash_sessions: createBuilder({ data: CASH_SESSION_CERRADA, error: null }),
+describe("completeScheduledAppointmentAction — llamada al RPC", () => {
+  it("manda el turno, la caja y el fin del día de Paraguay como tope", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(AHORA);
+    const { rpc } = mockRpc({
+      data: { ...APPOINTMENT, status: "completed" },
+      error: null,
+    });
+
+    const result = await completeScheduledAppointmentAction("apt1", "cs1");
+
+    // La zona horaria se resuelve acá (src/lib/dates.ts) y viaja como
+    // instante: el SQL no sabe nada de America/Asuncion. El miércoles
+    // 16/09 termina a las 03:00Z del 17.
+    expect(rpc).toHaveBeenCalledWith("complete_appointment_and_charge", {
+      p_appointment_id: "apt1",
+      p_cash_session_id: "cs1",
+      p_max_start_time: "2026-09-17T03:00:00.000Z",
+    });
+    expect(result).toEqual({
+      success: true,
+      data: { ...APPOINTMENT, status: "completed" },
+    });
+  });
+
+  it("nunca manda el monto: el precio lo lee la base", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(AHORA);
+    const { rpc } = mockRpc({ data: APPOINTMENT, error: null });
+
+    await completeScheduledAppointmentAction("apt1", "cs1");
+
+    const params = (
+      rpc.mock.calls[0] as unknown as [string, Record<string, unknown>]
+    )[1];
+    expect(params).not.toHaveProperty("p_amount");
+  });
+});
+
+describe("completeScheduledAppointmentAction — errores de negocio del RPC", () => {
+  it("traduce CL001 (caja ajena, inexistente o cerrada)", async () => {
+    mockRpc({
+      data: null,
+      error: { message: "Caja inexistente, ajena o cerrada", code: "CL001" },
     });
 
     const result = await completeScheduledAppointmentAction("apt1", "cs1");
@@ -358,10 +372,10 @@ describe("completeScheduledAppointmentAction — caja y turno", () => {
     });
   });
 
-  it("rechaza si el turno no existe (o es de otro barbero vía RLS)", async () => {
-    mockSupabase({
-      cash_sessions: createBuilder({ data: CASH_SESSION_ABIERTA, error: null }),
-      appointments: createBuilder({ data: null, error: null }),
+  it("traduce CL004 (turno inexistente, ajeno o ya resuelto)", async () => {
+    mockRpc({
+      data: null,
+      error: { message: "Turno no encontrado o ya actualizado", code: "CL004" },
     });
 
     const result = await completeScheduledAppointmentAction("apt1", "cs1");
@@ -372,29 +386,11 @@ describe("completeScheduledAppointmentAction — caja y turno", () => {
     });
   });
 
-  it("rechaza si el turno ya fue completado o cancelado", async () => {
-    mockSupabase({
-      cash_sessions: createBuilder({ data: CASH_SESSION_ABIERTA, error: null }),
-      appointments: createBuilder({
-        data: { ...turnoAgendado(APPOINTMENT.start_time), status: "cancelled" },
-        error: null,
-      }),
+  it("traduce CL007 (turno de un día futuro)", async () => {
+    mockRpc({
+      data: null,
+      error: { message: "Turno de un día futuro", code: "CL007" },
     });
-
-    const result = await completeScheduledAppointmentAction("apt1", "cs1");
-
-    expect(result).toEqual({
-      success: false,
-      error: "Turno no encontrado o ya fue actualizado.",
-    });
-  });
-
-  it("rechaza cobrar un turno de un día futuro (en hora de Paraguay)", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(AHORA);
-    const { appointmentsBuilder, transactionsBuilder } = mockCobro(
-      "2026-09-17T12:00:00.000Z", // jueves 09:00 en Paraguay
-    );
 
     const result = await completeScheduledAppointmentAction("apt1", "cs1");
 
@@ -402,59 +398,22 @@ describe("completeScheduledAppointmentAction — caja y turno", () => {
       success: false,
       error: "No podés cobrar un turno de un día futuro.",
     });
-    expect(appointmentsBuilder.update).not.toHaveBeenCalled();
-    expect(transactionsBuilder.insert).not.toHaveBeenCalled();
-  });
-});
-
-describe("completeScheduledAppointmentAction — cobro", () => {
-  it("cobrado antes de la hora agendada: corre start_time a ahora - duración", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(AHORA);
-    const { appointmentsBuilder, transactionsBuilder } = mockCobro(
-      "2026-09-16T18:00:00.000Z", // turno de las 15:00, cobrado a las 10:12
-    );
-
-    const result = await completeScheduledAppointmentAction("apt1", "cs1");
-
-    expect(appointmentsBuilder.update).toHaveBeenCalledWith({
-      status: "completed",
-      end_time: "2026-09-16T13:12:00.000Z",
-      start_time: "2026-09-16T12:52:00.000Z",
-    });
-    expect(transactionsBuilder.insert).toHaveBeenCalledWith({
-      cash_session_id: "cs1",
-      type: "income",
-      amount: SERVICIO_ACTIVO.price,
-      description: `Corte: ${SERVICIO_ACTIVO.name}`,
-    });
-    expect(result.success).toBe(true);
   });
 
-  it("cobrado después de la hora agendada: no toca start_time", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(AHORA);
-    const { appointmentsBuilder } = mockCobro("2026-09-16T12:30:00.000Z");
-
-    await completeScheduledAppointmentAction("apt1", "cs1");
-
-    expect(appointmentsBuilder.update).toHaveBeenCalledWith({
-      status: "completed",
-      end_time: "2026-09-16T13:12:00.000Z",
+  it("ya no existe el caso 'turno cobrado sin ingreso': el RPC revierte todo", async () => {
+    // Antes de la spec 09, un fallo al insertar la transacción dejaba el
+    // turno en 'completed' y devolvía "El corte se guardó, pero...". Ahora
+    // la transacción de Postgres revierte también el update del turno.
+    mockRpc({
+      data: null,
+      error: { message: "error al insertar transactions", code: "XX000" },
     });
-  });
-
-  it("avisa del desfase si el turno se actualiza pero falla la transacción", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(AHORA);
-    mockCobro("2026-09-16T12:30:00.000Z", { message: "boom" });
 
     const result = await completeScheduledAppointmentAction("apt1", "cs1");
 
     expect(result).toEqual({
       success: false,
-      error:
-        "El corte se guardó, pero no se pudo reflejar en la caja. Avisá para revisar el desfase.",
+      error: "Algo salió mal. Intentá de nuevo.",
     });
   });
 });

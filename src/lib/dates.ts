@@ -146,3 +146,47 @@ export function businessRangeUtc(
     end: businessDayRangeUtc(endDateISO).end,
   };
 }
+
+/* ---------------------------------------------------------------------------
+ * Formateo para pantalla. Vive acá, con el resto de las fechas del negocio,
+ * para que ninguna pantalla vuelva a armar su propio `Intl.DateTimeFormat`
+ * con la zona puesta a mano (había uno repetido en la agenda y otro en la
+ * caja).
+ * ------------------------------------------------------------------------- */
+
+// Un día calendario no es un instante: se formatea en UTC a propósito, para
+// que ninguna zona horaria lo corra de día.
+const dateLabelFormatter = new Intl.DateTimeFormat("es-PY", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  timeZone: "UTC",
+});
+
+/** "Sábado, 20 de septiembre" — etiqueta de un día calendario. */
+export function formatBusinessDateLabel(dateISO: string): string {
+  const label = dateLabelFormatter.format(new Date(`${dateISO}T00:00:00.000Z`));
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+const timeFormatter = new Intl.DateTimeFormat("es-PY", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: BUSINESS_TIMEZONE,
+});
+
+/** "15:30" — hora de pared de un instante, en la zona del negocio. */
+export function formatBusinessTime(instantISO: string): string {
+  return timeFormatter.format(new Date(instantISO));
+}
+
+const dateTimeFormatter = new Intl.DateTimeFormat("es-PY", {
+  dateStyle: "short",
+  timeStyle: "short",
+  timeZone: BUSINESS_TIMEZONE,
+});
+
+/** Fecha y hora cortas de un instante, en la zona del negocio. */
+export function formatBusinessDateTime(instantISO: string): string {
+  return dateTimeFormatter.format(new Date(instantISO));
+}

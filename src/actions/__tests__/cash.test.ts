@@ -10,6 +10,17 @@ vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
 }));
 
+// Desde la spec 09, la escritura de racha/nivel del cierre va por
+// service_role (ver cash-gamification.test.ts). Acá alcanza con que no
+// explote: lo que se verifica en este archivo es el saldo, no la racha.
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: () => ({
+    from: () => ({
+      update: () => ({ eq: async () => ({ error: null }) }),
+    }),
+  }),
+}));
+
 import {
   getCashBalanceAction,
   getCurrentCashSessionAction,

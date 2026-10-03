@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateTemporaryPassword } from "@/lib/passwords";
+import { NO_ES_DUENO, USUARIO_INVALIDO } from "@/lib/db-errors";
 import type { User, UserLevel } from "@/types";
 
 export type TeamActionResult<T> =
@@ -190,9 +191,19 @@ export async function createBarberAction(
 }
 
 /**
- * Modifica nivel y/o comisión de un barbero. Solo un dueño puede
- * ejecutarlo (ver docs/specs/03-gestion-de-equipo.md, sección 5: un
- * barbero no debería poder subirse la comisión interceptando la petición).
+ * Modifica nivel y/o comisión de un barbero. Solo un dueño puede ejecutarlo
+ * (ver docs/specs/03-gestion-de-equipo.md, sección 5: un barbero no debería
+ * poder subirse la comisión interceptando la petición).
+ *
+ * Desde la spec 09 (paso 2) el update va por el RPC `update_team_member` y
+ * no por `.from("users").update(...)`: `authenticated` perdió el privilegio
+ * de escribir `level` y `commission_pct` — sólo puede tocar su propio
+ * `name` — para que un barbero no pueda inflarse la racha ni la comisión
+ * desde la consola del navegador. El RPC es SECURITY DEFINER y revalida el
+ * rol, así que la barrera quedó en la base y no sólo en este chequeo.
+ *
+ * Los campos ausentes se mandan como null: para el RPC eso significa "no
+ * cambiar", igual que el `Partial` de `UpdateBarberPayload`.
  */
 export async function updateBarberAction(
   id: string,
@@ -210,26 +221,24 @@ export async function updateBarberAction(
     return { success: false, error: MENSAJE_ACCESO_DENEGADO };
   }
 
-  const updatePayload: UpdateBarberPayload = {};
-  if (data.level !== undefined) updatePayload.level = data.level;
-  if (data.commission_pct !== undefined) {
-    updatePayload.commission_pct = data.commission_pct;
-  }
-
   const { data: updated, error } = await supabase
-    .from("users")
-    .update(updatePayload)
-    .eq("id", id)
-    .select()
-    .maybeSingle();
+    .rpc("update_team_member", {
+      p_user_id: id,
+      p_level: data.level ?? null,
+      p_commission_pct: data.commission_pct ?? null,
+    })
+    .single();
 
   if (error) {
-    console.error("updateBarberAction:", error.message);
-    return { success: false, error: MENSAJE_ERROR_GENERICO };
-  }
-
-  if (!updated) {
-    return { success: false, error: MENSAJE_NO_ENCONTRADO };
+    switch (error.code) {
+      case NO_ES_DUENO:
+        return { success: false, error: MENSAJE_ACCESO_DENEGADO };
+      case USUARIO_INVALIDO:
+        return { success: false, error: MENSAJE_NO_ENCONTRADO };
+      default:
+        console.error("updateBarberAction:", error.message);
+        return { success: false, error: MENSAJE_ERROR_GENERICO };
+    }
   }
 
   revalidatePath("/equipo");

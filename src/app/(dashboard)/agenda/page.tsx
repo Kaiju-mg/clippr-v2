@@ -10,8 +10,14 @@ interface AgendaPageProps {
 
 export default async function AgendaPage({ searchParams }: AgendaPageProps) {
   const params = await searchParams;
+  const hoy = businessToday();
   const dateISO =
-    params.date && isValidDateISO(params.date) ? params.date : businessToday();
+    params.date && isValidDateISO(params.date) ? params.date : hoy;
+  // El "hoy" se resuelve acá, en el servidor, y baja como booleano: si la
+  // agenda lo calculara en el cliente, el día del negocio dependería del
+  // reloj del celular y además podría no coincidir con el render del
+  // servidor (hidratación).
+  const esDiaFuturo = dateISO > hoy;
 
   const [agendaResult, cashResult, servicesResult] = await Promise.all([
     getAgendaAction(dateISO),
@@ -46,6 +52,7 @@ export default async function AgendaPage({ searchParams }: AgendaPageProps) {
   return (
     <AgendaView
       dateISO={dateISO}
+      esDiaFuturo={esDiaFuturo}
       appointments={agendaResult.data}
       cashSessionId={cashResult.data?.id ?? null}
       services={servicesResult.data}

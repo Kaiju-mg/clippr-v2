@@ -85,11 +85,19 @@ async function countCompletedCuts(
   return count ?? 0;
 }
 
+export interface IncomeBreakdown {
+  /** Todo lo que entró a la caja: cortes + ventas + ingresos manuales. */
+  total: number;
+  /** Sólo los cortes cobrados (`category = 'service'`). */
+  service: number;
+}
+
 /**
- * Ingresos cobrados por cada barbero dentro de un rango. Son dos consultas
- * porque `transactions` no tiene columnas de tenant ni de usuario (solo
- * `cash_session_id`, ver el modelo en docs/arquitectura.md): primero las
- * cajas, para saber de quién es cada movimiento, después los movimientos.
+ * Ingresos cobrados por cada barbero dentro de un rango, abiertos en "todo"
+ * y "sólo cortes". Son dos consultas porque `transactions` no tiene columnas
+ * de tenant ni de usuario (solo `cash_session_id`, ver el modelo en
+ * docs/arquitectura.md): primero las cajas, para saber de quién es cada
+ * movimiento, después los movimientos.
  *
  * El recorte por fecha va sobre `transactions.created_at`, **no** sobre el
  * día de apertura de la caja. Una caja que se abrió anoche y sigue abierta
@@ -99,16 +107,16 @@ async function countCompletedCuts(
  * intersección con el rango (arrancaron antes de que termine y no cerraron
  * antes de que empiece), no por día de apertura.
  *
- * Incluye todo lo cobrado (cortes, ventas de productos, ingresos manuales),
- * no solo los cortes: es "lo que entró a la caja", el mismo número que ve el
- * barbero en `/caja`.
+ * `service` sale de `transactions.category` (spec 09, paso 3) y no del
+ * prefijo de la descripción: es lo que permite un ticket promedio que no
+ * mezcle cortes con ventas de productos.
  */
 async function sumIncome(
   supabase: SupabaseServerClient,
   userIds: string[],
   range: { start: string; end: string },
-): Promise<Map<string, number> | null> {
-  const totals = new Map<string, number>();
+): Promise<Map<string, IncomeBreakdown> | null> {
+  const totals = new Map<string, IncomeBreakdown>();
   if (userIds.length === 0) return totals;
 
   const { data: sessions, error: sessionsError } = await supabase
@@ -134,7 +142,7 @@ async function sumIncome(
 
   const { data: transactions, error: transactionsError } = await supabase
     .from("transactions")
-    .select("cash_session_id, amount")
+    .select("cash_session_id, amount, category")
     .eq("type", "income")
     .gte("created_at", range.start)
     .lt("created_at", range.end)
@@ -151,10 +159,16 @@ async function sumIncome(
   for (const row of (transactions ?? []) as {
     cash_session_id: string;
     amount: number;
+    category: string;
   }[]) {
     const userId = ownerOfSession.get(row.cash_session_id);
     if (!userId) continue;
-    totals.set(userId, (totals.get(userId) ?? 0) + Number(row.amount));
+    const actual = totals.get(userId) ?? { total: 0, service: 0 };
+    const amount = Number(row.amount);
+    totals.set(userId, {
+      total: actual.total + amount,
+      service: actual.service + (row.category === "service" ? amount : 0),
+    });
   }
 
   return totals;
@@ -216,7 +230,10 @@ export async function getBarberStatsAction(
     data: {
       dateISO,
       completedCuts: dayCuts,
-      income: incomeByUser.get(profile.id) ?? 0,
+      // El barbero ve "lo que entró a la caja" completo, igual que en
+      // /caja: la separación por categoría es para el ticket promedio del
+      // dueño, no para este número.
+      income: incomeByUser.get(profile.id)?.total ?? 0,
       streakCount: profile.streak_count,
       level: profile.level,
       progress: levelProgress(windowCuts),
@@ -228,7 +245,10 @@ export interface BarberPerformance {
   userId: string;
   name: string;
   cuts: number;
+  /** Todo lo cobrado por esta persona: cortes + ventas + manuales. */
   income: number;
+  /** Sólo los cortes, para no mezclar con las ventas de productos. */
+  serviceIncome: number;
 }
 
 export interface OwnerStats {
@@ -237,9 +257,13 @@ export interface OwnerStats {
   /** Días del rango, inclusive. Nunca es 0 (se valida el rango antes). */
   days: number;
   totalIncome: number;
+  /** Parte de `totalIncome` que vino de cortes (`category = 'service'`). */
+  totalServiceIncome: number;
   totalCuts: number;
   /** Ingreso promedio por día del rango. */
   dailyAverageIncome: number;
+  /** Cortes / ingreso por corte: sólo cortes, nunca ventas ni propinas. */
+  averageTicket: number;
   /** Equipo ordenado por ingresos, de mayor a menor. */
   leaderboard: BarberPerformance[];
 }
@@ -321,16 +345,24 @@ export async function getOwnerStatsAction(
   }
 
   const leaderboard: BarberPerformance[] = teamRows
-    .map((member) => ({
-      userId: member.id,
-      name: member.name,
-      cuts: cutsByUser.get(member.id) ?? 0,
-      income: incomeByUser.get(member.id) ?? 0,
-    }))
+    .map((member) => {
+      const income = incomeByUser.get(member.id);
+      return {
+        userId: member.id,
+        name: member.name,
+        cuts: cutsByUser.get(member.id) ?? 0,
+        income: income?.total ?? 0,
+        serviceIncome: income?.service ?? 0,
+      };
+    })
     .sort((a, b) => b.income - a.income || b.cuts - a.cuts);
 
   const totalIncome = leaderboard.reduce(
     (total, member) => total + member.income,
+    0,
+  );
+  const totalServiceIncome = leaderboard.reduce(
+    (total, member) => total + member.serviceIncome,
     0,
   );
   const totalCuts = leaderboard.reduce(
@@ -345,10 +377,16 @@ export async function getOwnerStatsAction(
       endDateISO,
       days,
       totalIncome,
+      totalServiceIncome,
       totalCuts,
       // `days` nunca es 0 (se validó arriba), pero la división queda
       // protegida igual: caso borde 2 de la spec.
       dailyAverageIncome: days > 0 ? Math.round(totalIncome / days) : 0,
+      // Sólo lo cobrado por cortes sobre la cantidad de cortes (spec 09,
+      // paso 3). Con el total mezclado, una barbería que vende mucha cera
+      // mostraba un "ticket promedio" que ningún cliente pagó nunca.
+      averageTicket:
+        totalCuts > 0 ? Math.round(totalServiceIncome / totalCuts) : 0,
       leaderboard,
     },
   };

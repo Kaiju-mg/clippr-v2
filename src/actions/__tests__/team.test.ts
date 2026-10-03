@@ -59,11 +59,19 @@ interface SupabaseMockOptions {
    * acciones de team.actions.ts las hacen (primero el perfil propio, después
    * la consulta/mutación real). */
   fromResults: MockResult<unknown>[];
+  /** Resultado del `.rpc("update_team_member", ...)` de updateBarberAction
+   * (spec 09: el update de nivel/comisión dejó de ser un `.from().update()`
+   * porque `authenticated` ya no tiene ese privilegio). */
+  rpcResult?: {
+    data: unknown;
+    error: { message: string; code?: string } | null;
+  };
 }
 
 function mockSupabaseClient({
   user = { id: "auth-owner" },
   fromResults,
+  rpcResult,
 }: SupabaseMockOptions) {
   const builders = fromResults.map((result) => createBuilder(result));
   let callIndex = 0;
@@ -73,18 +81,22 @@ function mockSupabaseClient({
     return builder;
   });
 
+  const single = vi.fn(async () => rpcResult);
+  const rpc = vi.fn(() => ({ single }));
+
   const client = {
     auth: {
       getUser: vi.fn(async () => ({ data: { user } })),
     },
     from,
+    rpc,
   };
 
   vi.mocked(createClient).mockResolvedValue(
     client as unknown as Awaited<ReturnType<typeof createClient>>,
   );
 
-  return { from, builders };
+  return { from, builders, rpc };
 }
 
 function mockAdminClient(result: {
@@ -358,24 +370,42 @@ describe("createBarberAction — happy path y errores de servidor", () => {
 
 describe("updateBarberAction — control de acceso (RBAC)", () => {
   it("rechaza si quien llama tiene role 'barber' (no puede subirse la comisión)", async () => {
-    mockSupabaseClient({
+    const { rpc } = mockSupabaseClient({
       fromResults: [{ data: BARBER_PROFILE, error: null }],
     });
 
     const result = await updateBarberAction("u2", { commission_pct: 100 });
 
     expect(result).toEqual({ success: false, error: MENSAJE_ACCESO_DENEGADO });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("traduce el CL010 del RPC si el chequeo de rol se saltea", async () => {
+    // La barrera real está en la base: el RPC revalida el rol aunque alguien
+    // llame a la acción (o directo a la función) con una sesión de barbero.
+    mockSupabaseClient({
+      fromResults: [{ data: OWNER_PROFILE, error: null }],
+      rpcResult: {
+        data: null,
+        error: {
+          message: "Solo el dueño puede gestionar el equipo",
+          code: "CL010",
+        },
+      },
+    });
+
+    const result = await updateBarberAction("u2", { commission_pct: 50 });
+
+    expect(result).toEqual({ success: false, error: MENSAJE_ACCESO_DENEGADO });
   });
 });
 
 describe("updateBarberAction — happy path y casos borde", () => {
-  it("actualiza nivel y comisión cuando quien llama es dueño", async () => {
+  it("actualiza nivel y comisión por RPC cuando quien llama es dueño", async () => {
     const updated = { ...BARBER, level: "senior" as const, commission_pct: 50 };
-    const { builders } = mockSupabaseClient({
-      fromResults: [
-        { data: OWNER_PROFILE, error: null },
-        { data: updated, error: null },
-      ],
+    const { rpc } = mockSupabaseClient({
+      fromResults: [{ data: OWNER_PROFILE, error: null }],
+      rpcResult: { data: updated, error: null },
     });
 
     const result = await updateBarberAction("u2", {
@@ -383,20 +413,38 @@ describe("updateBarberAction — happy path y casos borde", () => {
       commission_pct: 50,
     });
 
-    expect(builders[1].update).toHaveBeenCalledWith({
-      level: "senior",
-      commission_pct: 50,
+    // Ya no es un `.from("users").update(...)`: `authenticated` perdió el
+    // privilegio de escribir level/commission_pct (migración 20260920010000).
+    expect(rpc).toHaveBeenCalledWith("update_team_member", {
+      p_user_id: "u2",
+      p_level: "senior",
+      p_commission_pct: 50,
     });
-    expect(builders[1].eq).toHaveBeenCalledWith("id", "u2");
     expect(result).toEqual({ success: true, data: updated });
   });
 
-  it("devuelve 'no encontrado' si RLS bloquea la fila (otro tenant)", async () => {
+  it("manda null en el campo que no cambia (el RPC lo interpreta como 'dejalo igual')", async () => {
+    const { rpc } = mockSupabaseClient({
+      fromResults: [{ data: OWNER_PROFILE, error: null }],
+      rpcResult: { data: BARBER, error: null },
+    });
+
+    await updateBarberAction("u2", { commission_pct: 50 });
+
+    expect(rpc).toHaveBeenCalledWith("update_team_member", {
+      p_user_id: "u2",
+      p_level: null,
+      p_commission_pct: 50,
+    });
+  });
+
+  it("devuelve 'no encontrado' si el barbero es de otro tenant (CL011)", async () => {
     mockSupabaseClient({
-      fromResults: [
-        { data: OWNER_PROFILE, error: null },
-        { data: null, error: null },
-      ],
+      fromResults: [{ data: OWNER_PROFILE, error: null }],
+      rpcResult: {
+        data: null,
+        error: { message: "Barbero no encontrado", code: "CL011" },
+      },
     });
 
     const result = await updateBarberAction("otro-tenant", {

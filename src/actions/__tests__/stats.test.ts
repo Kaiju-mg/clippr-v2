@@ -88,8 +88,8 @@ describe("getBarberStatsAction", () => {
     });
     const transactionsBuilder = createBuilder({
       data: [
-        { cash_session_id: "cs1", amount: 30000 },
-        { cash_session_id: "cs1", amount: 25000 },
+        { cash_session_id: "cs1", amount: 30000, category: "service" },
+        { cash_session_id: "cs1", amount: 25000, category: "product" },
       ],
       error: null,
     });
@@ -149,7 +149,9 @@ describe("getBarberStatsAction", () => {
       error: null,
     });
     const transactionsBuilder = createBuilder({
-      data: [{ cash_session_id: "cs-de-ayer", amount: 35000 }],
+      data: [
+        { cash_session_id: "cs-de-ayer", amount: 35000, category: "service" },
+      ],
       error: null,
     });
 
@@ -300,11 +302,15 @@ describe("getOwnerStatsAction — métricas", () => {
       ],
       error: null,
     });
+    // Ana cobró 50.000 en cortes y vendió 10.000 de producto; Beto sólo
+    // cortes; Carlos (el dueño) cargó una propina a mano. La mezcla es a
+    // propósito: es lo que antes inflaba el ticket promedio.
     const transactionsBuilder = createBuilder({
       data: [
-        { cash_session_id: "cs1", amount: 60000 },
-        { cash_session_id: "cs2", amount: 30000 },
-        { cash_session_id: "cs3", amount: 10000 },
+        { cash_session_id: "cs1", amount: 50000, category: "service" },
+        { cash_session_id: "cs1", amount: 10000, category: "product" },
+        { cash_session_id: "cs2", amount: 30000, category: "service" },
+        { cash_session_id: "cs3", amount: 10000, category: "manual" },
       ],
       error: null,
     });
@@ -332,10 +338,58 @@ describe("getOwnerStatsAction — métricas", () => {
     expect(result.data.days).toBe(2);
     expect(result.data.dailyAverageIncome).toBe(50000);
     expect(result.data.leaderboard).toEqual([
-      { userId: "user-1", name: "Ana", cuts: 2, income: 60000 },
-      { userId: "user-2", name: "Beto", cuts: 1, income: 30000 },
-      { userId: "owner-1", name: "Carlos", cuts: 1, income: 10000 },
+      {
+        userId: "user-1",
+        name: "Ana",
+        cuts: 2,
+        income: 60000,
+        serviceIncome: 50000,
+      },
+      {
+        userId: "user-2",
+        name: "Beto",
+        cuts: 1,
+        income: 30000,
+        serviceIncome: 30000,
+      },
+      {
+        userId: "owner-1",
+        name: "Carlos",
+        cuts: 1,
+        income: 10000,
+        serviceIncome: 0,
+      },
     ]);
+  });
+
+  it("el ticket promedio usa sólo los cortes, no las ventas ni los movimientos manuales", async () => {
+    mockBarberia();
+
+    const result = await getOwnerStatsAction("2026-09-16", "2026-09-17");
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    // 80.000 cobrados en cortes / 4 cortes = 20.000. Con el total mezclado
+    // (100.000 / 4) daba 25.000: un ticket que ningún cliente pagó.
+    expect(result.data.totalServiceIncome).toBe(80000);
+    expect(result.data.averageTicket).toBe(20000);
+  });
+
+  it("el ingreso total sigue incluyendo ventas y movimientos manuales", async () => {
+    mockBarberia();
+
+    const result = await getOwnerStatsAction("2026-09-16", "2026-09-17");
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    // "Ingresos" es lo que entró a la caja, igual que antes: la separación
+    // por categoría es sólo para el ticket promedio.
+    expect(result.data.totalIncome).toBe(100000);
+    expect(result.data.totalIncome).toBeGreaterThan(
+      result.data.totalServiceIncome,
+    );
   });
 
   it("el rango cubre todos los días, del primero al último inclusive", async () => {
@@ -370,9 +424,12 @@ describe("getOwnerStatsAction — métricas", () => {
     if (!result.success) return;
 
     expect(result.data.totalIncome).toBe(0);
+    expect(result.data.totalServiceIncome).toBe(0);
     expect(result.data.totalCuts).toBe(0);
     expect(result.data.dailyAverageIncome).toBe(0);
+    expect(result.data.averageTicket).toBe(0);
     expect(Number.isFinite(result.data.dailyAverageIncome)).toBe(true);
+    expect(Number.isFinite(result.data.averageTicket)).toBe(true);
     expect(result.data.leaderboard.every((m) => m.cuts === 0)).toBe(true);
   });
 

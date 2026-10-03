@@ -2,6 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import {
+  CAJA_INVALIDA,
+  INICIO_INVALIDO,
+  SERVICIO_INVALIDO,
+  SIN_SESION,
+} from "@/lib/db-errors";
 import type { Appointment } from "@/types";
 
 export type WalkinActionResult<T> =
@@ -26,8 +32,6 @@ const MENSAJE_CAJA_INVALIDA =
   "Debes abrir tu caja diaria antes de cobrar un corte.";
 const MENSAJE_SERVICIO_INVALIDO = "Servicio no encontrado o inactivo.";
 const MENSAJE_INICIO_INVALIDO = "El horario de inicio del turno no es válido.";
-const MENSAJE_TRANSACCION_FALLIDA =
-  "El corte se guardó, pero no se pudo reflejar en la caja. Avisá para revisar el desfase.";
 
 function validateStartTime(value: string): string | null {
   const parsed = new Date(value);
@@ -38,25 +42,29 @@ function validateStartTime(value: string): string | null {
 }
 
 /**
- * Completa un walk-in: verifica la caja y el servicio, crea el `appointment`
- * y la `transaction` de ingreso correspondiente. El monto nunca viene del
- * cliente — se lee `services.price` acá, del lado del servidor, por
- * `serviceId` — y `end_time` se calcula con el reloj del servidor, mismo
- * criterio que `closeCashSessionAction` en `cash.actions.ts`: no hay que
- * confiar en un timestamp mandado por un Client Component (el celular del
- * barbero puede tener mal la hora), y menos en un monto (ver el postmortem
- * de "cualquier usuario puede alterar las peticiones HTTP y manipular la
- * caja" en docs/aprendizajes-v1.md).
+ * Completa un walk-in: crea el `appointment` ya cobrado y su `transaction`
+ * de ingreso en una sola llamada al RPC `complete_walkin_and_charge`
+ * (migración 20260920000000). Antes eran dos inserts sueltos y si el
+ * segundo fallaba quedaba un corte sin cobrar; ahora la función corre
+ * dentro de una única transacción de Postgres, así que o se guardan los dos
+ * o no se guarda ninguno (spec 09, paso 1).
  *
- * *(Deuda técnica transaccional, spec 05 sección 4)*: sin RPC atómico, son
- * dos inserts separados. Si el segundo (transactions) falla después de que
- * el primero (appointments) ya se guardó, se prioriza no perder el
- * registro del turno y se devuelve un error explícito para que el barbero
- * sepa que hay que revisar el desfase a mano.
+ * El monto nunca viene del cliente ni viaja como parámetro: lo lee el RPC de
+ * `services.price`, del lado de la base, dentro de la misma transacción (ver
+ * el postmortem de "cualquier usuario puede alterar las peticiones HTTP y
+ * manipular la caja" en docs/aprendizajes-v1.md). `end_time` también sale del
+ * reloj del servidor, no del celular del barbero.
+ *
+ * El RPC es SECURITY DEFINER y revalida a mano lo que RLS garantizaba (caja
+ * propia y abierta, servicio del mismo tenant), y devuelve los errores de
+ * negocio con SQLSTATE propios (`@/lib/db-errors`) para poder seguir
+ * mostrando el mensaje exacto en vez de uno genérico.
  */
 export async function completeWalkinAction(
   payload: CompleteWalkinPayload,
 ): Promise<WalkinActionResult<Appointment>> {
+  // Validación temprana, antes de pagar el viaje a la base. El RPC la
+  // repite (CL003): esta es por rapidez, la de allá es la barrera real.
   const startTimeError = validateStartTime(payload.startTime);
   if (startTimeError) {
     return { success: false, error: startTimeError };
@@ -64,85 +72,31 @@ export async function completeWalkinAction(
 
   const supabase = await createClient();
 
-  const { data: cashSession, error: cashSessionError } = await supabase
-    .from("cash_sessions")
-    .select("id, status")
-    .eq("id", payload.cashSessionId)
-    .maybeSingle<{ id: string; status: string }>();
-
-  if (cashSessionError) {
-    console.error(
-      "completeWalkinAction (cash_sessions):",
-      cashSessionError.message,
-    );
-    return { success: false, error: MENSAJE_ERROR_GENERICO };
-  }
-
-  // Si el id no es una caja propia y abierta, RLS (cash_sessions_select_own)
-  // ya la devuelve como null — se trata igual que "no tenés caja abierta",
-  // mismo criterio que closeCashSessionAction.
-  if (!cashSession || cashSession.status !== "open") {
-    return { success: false, error: MENSAJE_CAJA_INVALIDA };
-  }
-
-  const { data: service, error: serviceError } = await supabase
-    .from("services")
-    .select("id, name, price, is_active")
-    .eq("id", payload.serviceId)
-    .maybeSingle<{
-      id: string;
-      name: string;
-      price: number;
-      is_active: boolean;
-    }>();
-
-  if (serviceError) {
-    console.error("completeWalkinAction (services):", serviceError.message);
-    return { success: false, error: MENSAJE_ERROR_GENERICO };
-  }
-
-  if (!service || !service.is_active) {
-    return { success: false, error: MENSAJE_SERVICIO_INVALIDO };
-  }
-
-  const { data: appointment, error: appointmentError } = await supabase
-    .from("appointments")
-    .insert({
-      service_id: service.id,
-      client_name: payload.clientName?.trim() || null,
-      start_time: payload.startTime,
-      end_time: new Date().toISOString(),
-      status: "completed",
+  const { data, error } = await supabase
+    .rpc("complete_walkin_and_charge", {
+      p_service_id: payload.serviceId,
+      p_cash_session_id: payload.cashSessionId,
+      p_start_time: payload.startTime,
+      p_client_name: payload.clientName?.trim() || null,
     })
-    .select()
     .single();
 
-  if (appointmentError) {
-    console.error(
-      "completeWalkinAction (appointments):",
-      appointmentError.message,
-    );
-    return { success: false, error: MENSAJE_ERROR_GENERICO };
-  }
-
-  const { error: transactionError } = await supabase
-    .from("transactions")
-    .insert({
-      cash_session_id: cashSession.id,
-      type: "income",
-      amount: service.price,
-      description: `Corte: ${service.name}`,
-    });
-
-  if (transactionError) {
-    console.error(
-      "completeWalkinAction (transactions):",
-      transactionError.message,
-    );
-    return { success: false, error: MENSAJE_TRANSACCION_FALLIDA };
+  if (error) {
+    switch (error.code) {
+      case CAJA_INVALIDA:
+      case SIN_SESION:
+        return { success: false, error: MENSAJE_CAJA_INVALIDA };
+      case SERVICIO_INVALIDO:
+        return { success: false, error: MENSAJE_SERVICIO_INVALIDO };
+      case INICIO_INVALIDO:
+        return { success: false, error: MENSAJE_INICIO_INVALIDO };
+      default:
+        console.error("completeWalkinAction:", error.message);
+        return { success: false, error: MENSAJE_ERROR_GENERICO };
+    }
   }
 
   revalidatePath("/inicio");
   revalidatePath("/caja");
-  return { success: true, data: appointment as Appointment };
+  return { success: true, data: data as Appointment };
 }

@@ -6,27 +6,16 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ScheduleInlineForm } from "./ScheduleInlineForm";
 import { AppointmentRow } from "./AppointmentRow";
-import { shiftDateISO } from "@/lib/dates";
+import { formatBusinessDateLabel, shiftDateISO } from "@/lib/dates";
 import type { Appointment, Service } from "@/types";
 
 interface AgendaViewProps {
   dateISO: string;
+  /** El día que se está mirando es posterior a hoy (lo decide el servidor). */
+  esDiaFuturo: boolean;
   appointments: Appointment[];
   cashSessionId: string | null;
   services: Service[];
-}
-
-// `dateISO` es un día calendario, no un instante: se formatea en UTC a
-// propósito para que ninguna zona horaria lo corra de día.
-function formatDateLabel(dateISO: string): string {
-  const date = new Date(`${dateISO}T00:00:00.000Z`);
-  const label = new Intl.DateTimeFormat("es-PY", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    timeZone: "UTC",
-  }).format(date);
-  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 /**
@@ -36,6 +25,7 @@ function formatDateLabel(dateISO: string): string {
  */
 export function AgendaView({
   dateISO,
+  esDiaFuturo,
   appointments,
   cashSessionId,
   services,
@@ -82,7 +72,9 @@ export function AgendaView({
         >
           <ChevronLeft size={16} strokeWidth={1.5} />
         </button>
-        <span className="text-sm font-medium">{formatDateLabel(dateISO)}</span>
+        <span className="text-sm font-medium">
+          {formatBusinessDateLabel(dateISO)}
+        </span>
         <button
           type="button"
           onClick={() => goToDate(shiftDateISO(dateISO, 1))}
@@ -126,6 +118,7 @@ export function AgendaView({
                   serviceName={service?.name ?? "Servicio eliminado"}
                   servicePrice={service?.price ?? 0}
                   cashSessionId={cashSessionId}
+                  esDiaFuturo={esDiaFuturo}
                 />
               </li>
             );

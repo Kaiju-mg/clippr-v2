@@ -12,61 +12,26 @@ vi.mock("next/cache", () => ({
 
 import { completeWalkinAction } from "../walkin.actions";
 
-interface MockResult<T> {
-  data: T | null;
-  error: { message: string } | null;
-}
-
-interface QueryBuilderMock<T> {
-  select: ReturnType<typeof vi.fn>;
-  insert: ReturnType<typeof vi.fn>;
-  eq: ReturnType<typeof vi.fn>;
-  single: ReturnType<typeof vi.fn>;
-  maybeSingle: ReturnType<typeof vi.fn>;
-  then: (onfulfilled: (value: MockResult<T>) => unknown) => Promise<unknown>;
+interface RpcResult {
+  data: unknown;
+  error: { message: string; code?: string; details?: string } | null;
 }
 
 /**
- * Simula el query builder encadenable de supabase-js, mismo patrón que
- * service.test.ts / cash.test.ts: cada método intermedio devuelve el mismo
- * builder, y single/maybeSingle (o el propio builder vía `then`, para el
- * insert de transactions que no encadena select) resuelven al resultado
- * configurado.
+ * Desde la spec 09, `completeWalkinAction` hace una sola llamada:
+ * `supabase.rpc("complete_walkin_and_charge", ...).single()`. El mock ya no
+ * necesita simular el query builder encadenable de varias tablas — alcanza
+ * con devolver lo que resuelve el RPC, que es justamente lo que la
+ * migración volvió atómico.
  */
-function createBuilder<T>(result: MockResult<T>): QueryBuilderMock<T> {
-  const builder: QueryBuilderMock<T> = {
-    select: vi.fn(() => builder),
-    insert: vi.fn(() => builder),
-    eq: vi.fn(() => builder),
-    single: vi.fn(async () => result),
-    maybeSingle: vi.fn(async () => result),
-    then: (onfulfilled) => Promise.resolve(result).then(onfulfilled),
-  };
-  return builder;
-}
-
-/**
- * completeWalkinAction toca cuatro tablas distintas (cash_sessions,
- * services, appointments, transactions); cada test arma solo los builders
- * que necesita, el resto queda undefined a propósito (si el código llegara
- * a tocarlos sin querer, el test explota con un error claro).
- */
-function mockSupabase(builders: Record<string, QueryBuilderMock<unknown>>) {
-  const from = vi.fn((table: string) => builders[table]);
+function mockRpc(result: RpcResult) {
+  const single = vi.fn(async () => result);
+  const rpc = vi.fn(() => ({ single }));
   vi.mocked(createClient).mockResolvedValue({
-    from,
+    rpc,
   } as unknown as Awaited<ReturnType<typeof createClient>>);
-  return { from };
+  return { rpc, single };
 }
-
-const CASH_SESSION_ABIERTA = { id: "cs1", status: "open" };
-const CASH_SESSION_CERRADA = { id: "cs1", status: "closed" };
-const SERVICIO_ACTIVO = {
-  id: "svc1",
-  name: "Corte Clásico",
-  price: 30000,
-  is_active: true,
-};
 
 const APPOINTMENT: Appointment = {
   id: "apt1",
@@ -119,172 +84,114 @@ describe("completeWalkinAction — validación de startTime", () => {
   });
 });
 
-describe("completeWalkinAction — caja", () => {
-  it("rechaza si la caja no existe (o RLS la bloquea por ser de otro barbero)", async () => {
-    const cashSessionsBuilder = createBuilder({ data: null, error: null });
-    mockSupabase({ cash_sessions: cashSessionsBuilder });
+describe("completeWalkinAction — llamada al RPC", () => {
+  it("manda service_id, caja y start_time, y nunca un monto", async () => {
+    const { rpc } = mockRpc({ data: APPOINTMENT, error: null });
 
     const result = await completeWalkinAction(PAYLOAD_VALIDO);
 
-    expect(result).toEqual({
-      success: false,
-      error: "Debes abrir tu caja diaria antes de cobrar un corte.",
+    expect(rpc).toHaveBeenCalledTimes(1);
+    const [nombre, params] = rpc.mock.calls[0] as unknown as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(nombre).toBe("complete_walkin_and_charge");
+    expect(params).toEqual({
+      p_service_id: "svc1",
+      p_cash_session_id: "cs1",
+      p_start_time: PAYLOAD_VALIDO.startTime,
+      p_client_name: null,
     });
-  });
-
-  it("rechaza si la caja ya está cerrada", async () => {
-    const cashSessionsBuilder = createBuilder({
-      data: CASH_SESSION_CERRADA,
-      error: null,
-    });
-    mockSupabase({ cash_sessions: cashSessionsBuilder });
-
-    const result = await completeWalkinAction(PAYLOAD_VALIDO);
-
-    expect(result).toEqual({
-      success: false,
-      error: "Debes abrir tu caja diaria antes de cobrar un corte.",
-    });
-  });
-});
-
-describe("completeWalkinAction — servicio", () => {
-  it("rechaza si el servicio no existe", async () => {
-    const cashSessionsBuilder = createBuilder({
-      data: CASH_SESSION_ABIERTA,
-      error: null,
-    });
-    const servicesBuilder = createBuilder({ data: null, error: null });
-    mockSupabase({
-      cash_sessions: cashSessionsBuilder,
-      services: servicesBuilder,
-    });
-
-    const result = await completeWalkinAction(PAYLOAD_VALIDO);
-
-    expect(result).toEqual({
-      success: false,
-      error: "Servicio no encontrado o inactivo.",
-    });
-  });
-
-  it("rechaza si el servicio está inactivo", async () => {
-    const cashSessionsBuilder = createBuilder({
-      data: CASH_SESSION_ABIERTA,
-      error: null,
-    });
-    const servicesBuilder = createBuilder({
-      data: { ...SERVICIO_ACTIVO, is_active: false },
-      error: null,
-    });
-    mockSupabase({
-      cash_sessions: cashSessionsBuilder,
-      services: servicesBuilder,
-    });
-
-    const result = await completeWalkinAction(PAYLOAD_VALIDO);
-
-    expect(result).toEqual({
-      success: false,
-      error: "Servicio no encontrado o inactivo.",
-    });
-  });
-});
-
-describe("completeWalkinAction — happy path y errores", () => {
-  it("usa service.price del servidor, ignorando cualquier monto que mande el cliente", async () => {
-    const cashSessionsBuilder = createBuilder({
-      data: CASH_SESSION_ABIERTA,
-      error: null,
-    });
-    const servicesBuilder = createBuilder({
-      data: SERVICIO_ACTIVO,
-      error: null,
-    });
-    const appointmentsBuilder = createBuilder({
-      data: APPOINTMENT,
-      error: null,
-    });
-    const transactionsBuilder = createBuilder({ data: null, error: null });
-    mockSupabase({
-      cash_sessions: cashSessionsBuilder,
-      services: servicesBuilder,
-      appointments: appointmentsBuilder,
-      transactions: transactionsBuilder,
-    });
-
-    const result = await completeWalkinAction(PAYLOAD_VALIDO);
-
-    const appointmentPayload = appointmentsBuilder.insert.mock.calls[0][0];
-    expect(appointmentPayload).toMatchObject({
-      service_id: "svc1",
-      client_name: null,
-      start_time: PAYLOAD_VALIDO.startTime,
-      status: "completed",
-    });
-    expect(appointmentPayload).not.toHaveProperty("user_id");
-    expect(appointmentPayload).not.toHaveProperty("barbershop_id");
-    expect(appointmentPayload).not.toHaveProperty("amount");
-
-    expect(transactionsBuilder.insert).toHaveBeenCalledWith({
-      cash_session_id: "cs1",
-      type: "income",
-      amount: SERVICIO_ACTIVO.price,
-      description: `Corte: ${SERVICIO_ACTIVO.name}`,
-    });
+    // El precio lo lee la base: el cliente no tiene forma de mandarlo.
+    expect(params).not.toHaveProperty("p_amount");
+    expect(params).not.toHaveProperty("p_user_id");
+    expect(params).not.toHaveProperty("p_barbershop_id");
 
     expect(result).toEqual({ success: true, data: APPOINTMENT });
   });
 
   it("manda el client_name recortado cuando viene en el payload", async () => {
-    const cashSessionsBuilder = createBuilder({
-      data: CASH_SESSION_ABIERTA,
-      error: null,
-    });
-    const servicesBuilder = createBuilder({
-      data: SERVICIO_ACTIVO,
-      error: null,
-    });
-    const appointmentsBuilder = createBuilder({
-      data: APPOINTMENT,
-      error: null,
-    });
-    const transactionsBuilder = createBuilder({ data: null, error: null });
-    mockSupabase({
-      cash_sessions: cashSessionsBuilder,
-      services: servicesBuilder,
-      appointments: appointmentsBuilder,
-      transactions: transactionsBuilder,
-    });
+    const { rpc } = mockRpc({ data: APPOINTMENT, error: null });
 
-    await completeWalkinAction({
-      ...PAYLOAD_VALIDO,
-      clientName: "  Juan  ",
-    });
+    await completeWalkinAction({ ...PAYLOAD_VALIDO, clientName: "  Juan  " });
 
-    expect(appointmentsBuilder.insert).toHaveBeenCalledWith(
-      expect.objectContaining({ client_name: "Juan" }),
+    expect(rpc).toHaveBeenCalledWith(
+      "complete_walkin_and_charge",
+      expect.objectContaining({ p_client_name: "Juan" }),
     );
   });
 
-  it("devuelve un error genérico si falla el insert de appointments", async () => {
-    const cashSessionsBuilder = createBuilder({
-      data: CASH_SESSION_ABIERTA,
-      error: null,
-    });
-    const servicesBuilder = createBuilder({
-      data: SERVICIO_ACTIVO,
-      error: null,
-    });
-    const appointmentsBuilder = createBuilder({
+  it("manda null si el client_name viene vacío", async () => {
+    const { rpc } = mockRpc({ data: APPOINTMENT, error: null });
+
+    await completeWalkinAction({ ...PAYLOAD_VALIDO, clientName: "   " });
+
+    expect(rpc).toHaveBeenCalledWith(
+      "complete_walkin_and_charge",
+      expect.objectContaining({ p_client_name: null }),
+    );
+  });
+});
+
+describe("completeWalkinAction — errores de negocio del RPC", () => {
+  it("traduce CL001 (caja ajena, inexistente o cerrada) al mensaje de caja", async () => {
+    mockRpc({
       data: null,
-      error: { message: "boom" },
+      error: { message: "Caja inexistente, ajena o cerrada", code: "CL001" },
     });
-    mockSupabase({
-      cash_sessions: cashSessionsBuilder,
-      services: servicesBuilder,
-      appointments: appointmentsBuilder,
+
+    const result = await completeWalkinAction(PAYLOAD_VALIDO);
+
+    expect(result).toEqual({
+      success: false,
+      error: "Debes abrir tu caja diaria antes de cobrar un corte.",
     });
+  });
+
+  it("traduce CL008 (sin sesión) al mismo mensaje de caja", async () => {
+    mockRpc({
+      data: null,
+      error: { message: "No hay sesión autenticada", code: "CL008" },
+    });
+
+    const result = await completeWalkinAction(PAYLOAD_VALIDO);
+
+    expect(result).toEqual({
+      success: false,
+      error: "Debes abrir tu caja diaria antes de cobrar un corte.",
+    });
+  });
+
+  it("traduce CL002 (servicio inexistente o inactivo)", async () => {
+    mockRpc({
+      data: null,
+      error: { message: "Servicio no encontrado o inactivo", code: "CL002" },
+    });
+
+    const result = await completeWalkinAction(PAYLOAD_VALIDO);
+
+    expect(result).toEqual({
+      success: false,
+      error: "Servicio no encontrado o inactivo.",
+    });
+  });
+
+  it("traduce CL003 (start_time inválido) aunque la validación previa lo deje pasar", async () => {
+    mockRpc({
+      data: null,
+      error: { message: "Horario de inicio inválido", code: "CL003" },
+    });
+
+    const result = await completeWalkinAction(PAYLOAD_VALIDO);
+
+    expect(result).toEqual({
+      success: false,
+      error: "El horario de inicio del turno no es válido.",
+    });
+  });
+
+  it("devuelve un error genérico ante cualquier otro fallo", async () => {
+    mockRpc({ data: null, error: { message: "boom", code: "08006" } });
 
     const result = await completeWalkinAction(PAYLOAD_VALIDO);
 
@@ -294,36 +201,21 @@ describe("completeWalkinAction — happy path y errores", () => {
     });
   });
 
-  it("avisa del desfase si el appointment se guarda pero falla la transacción", async () => {
-    const cashSessionsBuilder = createBuilder({
-      data: CASH_SESSION_ABIERTA,
-      error: null,
-    });
-    const servicesBuilder = createBuilder({
-      data: SERVICIO_ACTIVO,
-      error: null,
-    });
-    const appointmentsBuilder = createBuilder({
-      data: APPOINTMENT,
-      error: null,
-    });
-    const transactionsBuilder = createBuilder({
+  it("ya no existe el caso 'corte guardado sin cobrar': el RPC revierte todo", async () => {
+    // Antes de la spec 09 esto devolvía "El corte se guardó, pero no se pudo
+    // reflejar en la caja". Ahora un fallo al insertar la transacción
+    // revierte también el appointment, así que el único resultado posible es
+    // un error limpio, sin desfase que avisar.
+    mockRpc({
       data: null,
-      error: { message: "boom" },
-    });
-    mockSupabase({
-      cash_sessions: cashSessionsBuilder,
-      services: servicesBuilder,
-      appointments: appointmentsBuilder,
-      transactions: transactionsBuilder,
+      error: { message: "error al insertar transactions", code: "XX000" },
     });
 
     const result = await completeWalkinAction(PAYLOAD_VALIDO);
 
     expect(result).toEqual({
       success: false,
-      error:
-        "El corte se guardó, pero no se pudo reflejar en la caja. Avisá para revisar el desfase.",
+      error: "Algo salió mal. Intentá de nuevo.",
     });
   });
 });

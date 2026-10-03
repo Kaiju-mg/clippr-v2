@@ -3,13 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import {
-  businessDateOf,
   businessDateTimeToUtc,
   businessDayRangeUtc,
   businessToday,
   isValidDateISO,
   isValidTime,
 } from "@/lib/dates";
+import {
+  CAJA_INVALIDA,
+  SERVICIO_INVALIDO,
+  SIN_SESION,
+  TURNO_FUTURO,
+  TURNO_INVALIDO,
+} from "@/lib/db-errors";
 import type { Appointment, AppointmentStatus } from "@/types";
 
 export type AgendaActionResult<T> =
@@ -33,8 +39,6 @@ const MENSAJE_CLIENTE_INVALIDO = "El nombre del cliente es obligatorio.";
 const MENSAJE_INICIO_INVALIDO = "El horario de inicio del turno no es válido.";
 const MENSAJE_TURNO_INVALIDO = "Turno no encontrado o ya fue actualizado.";
 const MENSAJE_TURNO_FUTURO = "No podés cobrar un turno de un día futuro.";
-const MENSAJE_TRANSACCION_FALLIDA =
-  "El corte se guardó, pero no se pudo reflejar en la caja. Avisá para revisar el desfase.";
 
 // Estados que la agenda lista (spec 06, sección 3). "walkin" existe en el
 // check constraint de la migración de la spec 05 pero ningún flujo lo usa
@@ -178,150 +182,74 @@ export async function scheduleAppointmentAction(
     return { success: false, error: MENSAJE_ERROR_GENERICO };
   }
 
+  // /inicio también lista los turnos del día desde el 2026-09-20: sin esta
+  // revalidación, agendar en /agenda dejaba a /inicio mostrando la lista
+  // vieja hasta que algo más la invalidara.
   revalidatePath("/agenda");
+  revalidatePath("/inicio");
   return { success: true, data: created as Appointment };
 }
 
 /**
- * Completa y cobra un turno agendado: mismos principios que
- * completeWalkinAction (spec 05) — el precio se lee de `services.price`
- * en el servidor, la caja se valida antes de cobrar y `end_time` se pisa
- * con el reloj del servidor. El `eq("status", "scheduled")` del update es
- * la barrera contra completarlo dos veces (doble tap con red lenta).
+ * Completa y cobra un turno agendado en una sola llamada al RPC
+ * `complete_appointment_and_charge` (migración 20260920000000): el update de
+ * `appointments` y el insert de `transactions` pasaron a correr dentro de la
+ * misma transacción de Postgres, así que ya no puede quedar un turno cobrado
+ * sin su ingreso en la caja (spec 09, paso 1).
  *
- * Si se cobra antes de la hora agendada, `start_time` se corre a
- * `ahora - duración` para que el turno nunca quede con `end_time` anterior
- * a `start_time` (rompería las duraciones de la spec 08). Los turnos de días
- * futuros no se pueden cobrar. Ver docs/decisiones.md 2026-09-16.
+ * Mismos principios que antes: el precio lo lee la base de `services.price`
+ * (nunca viaja en el payload), la caja se valida como propia y abierta, y
+ * `end_time` sale del reloj del servidor. El `for update` del RPC reemplaza
+ * al viejo `eq("status", "scheduled")` como barrera contra el doble cobro:
+ * un segundo toque con red lenta espera al primero y ya no encuentra el
+ * turno en `scheduled`.
  *
- * *(Misma deuda transaccional que completeWalkinAction)*: el insert de
- * `transactions` es un paso separado del update de `appointments`.
+ * Si se cobra antes de la hora agendada, el RPC corre `start_time` a
+ * `ahora - duración` para que el turno nunca quede con `end_time` anterior a
+ * `start_time` (rompería las duraciones de la spec 08).
+ *
+ * `p_max_start_time` es el fin del día de hoy del negocio: la zona horaria se
+ * resuelve acá con `@/lib/dates` y se manda como instante, para que
+ * `America/Asuncion` siga viviendo en un solo lugar y no también en el SQL.
+ * Un turno que arranca en o después de ese instante es de un día futuro y no
+ * se puede cobrar. Ver docs/decisiones.md 2026-09-16.
  */
 export async function completeScheduledAppointmentAction(
   appointmentId: string,
   cashSessionId: string,
 ): Promise<AgendaActionResult<Appointment>> {
   const supabase = await createClient();
+  const finDeHoy = businessDayRangeUtc(businessToday()).end;
 
-  const { data: cashSession, error: cashSessionError } = await supabase
-    .from("cash_sessions")
-    .select("id, status")
-    .eq("id", cashSessionId)
-    .maybeSingle<{ id: string; status: string }>();
+  const { data, error } = await supabase
+    .rpc("complete_appointment_and_charge", {
+      p_appointment_id: appointmentId,
+      p_cash_session_id: cashSessionId,
+      p_max_start_time: finDeHoy,
+    })
+    .single();
 
-  if (cashSessionError) {
-    console.error(
-      "completeScheduledAppointmentAction (cash_sessions):",
-      cashSessionError.message,
-    );
-    return { success: false, error: MENSAJE_ERROR_GENERICO };
-  }
-
-  if (!cashSession || cashSession.status !== "open") {
-    return { success: false, error: MENSAJE_CAJA_INVALIDA };
-  }
-
-  const { data: appointment, error: appointmentError } = await supabase
-    .from("appointments")
-    .select("id, service_id, status, start_time")
-    .eq("id", appointmentId)
-    .maybeSingle<{
-      id: string;
-      service_id: string;
-      status: string;
-      start_time: string;
-    }>();
-
-  if (appointmentError) {
-    console.error(
-      "completeScheduledAppointmentAction (appointments select):",
-      appointmentError.message,
-    );
-    return { success: false, error: MENSAJE_ERROR_GENERICO };
-  }
-
-  if (!appointment || appointment.status !== "scheduled") {
-    return { success: false, error: MENSAJE_TURNO_INVALIDO };
-  }
-
-  const now = new Date();
-  const plannedStart = new Date(appointment.start_time);
-
-  if (businessDateOf(plannedStart) > businessToday(now)) {
-    return { success: false, error: MENSAJE_TURNO_FUTURO };
-  }
-
-  const { data: service, error: serviceError } = await supabase
-    .from("services")
-    .select("id, name, price, duration_minutes")
-    .eq("id", appointment.service_id)
-    .maybeSingle<{
-      id: string;
-      name: string;
-      price: number;
-      duration_minutes: number;
-    }>();
-
-  if (serviceError || !service) {
-    console.error(
-      "completeScheduledAppointmentAction (services):",
-      serviceError?.message ?? "servicio no encontrado",
-    );
-    return { success: false, error: MENSAJE_ERROR_GENERICO };
-  }
-
-  const cambios: {
-    status: "completed";
-    end_time: string;
-    start_time?: string;
-  } = { status: "completed", end_time: now.toISOString() };
-
-  if (now.getTime() < plannedStart.getTime()) {
-    cambios.start_time = new Date(
-      now.getTime() - service.duration_minutes * 60_000,
-    ).toISOString();
-  }
-
-  const { data: updated, error: updateError } = await supabase
-    .from("appointments")
-    .update(cambios)
-    .eq("id", appointmentId)
-    .eq("status", "scheduled")
-    .select()
-    .maybeSingle();
-
-  if (updateError) {
-    console.error(
-      "completeScheduledAppointmentAction (appointments update):",
-      updateError.message,
-    );
-    return { success: false, error: MENSAJE_ERROR_GENERICO };
-  }
-
-  if (!updated) {
-    return { success: false, error: MENSAJE_TURNO_INVALIDO };
-  }
-
-  const { error: transactionError } = await supabase
-    .from("transactions")
-    .insert({
-      cash_session_id: cashSession.id,
-      type: "income",
-      amount: service.price,
-      description: `Corte: ${service.name}`,
-    });
-
-  if (transactionError) {
-    console.error(
-      "completeScheduledAppointmentAction (transactions):",
-      transactionError.message,
-    );
-    return { success: false, error: MENSAJE_TRANSACCION_FALLIDA };
+  if (error) {
+    switch (error.code) {
+      case CAJA_INVALIDA:
+      case SIN_SESION:
+        return { success: false, error: MENSAJE_CAJA_INVALIDA };
+      case TURNO_INVALIDO:
+        return { success: false, error: MENSAJE_TURNO_INVALIDO };
+      case TURNO_FUTURO:
+        return { success: false, error: MENSAJE_TURNO_FUTURO };
+      case SERVICIO_INVALIDO:
+        return { success: false, error: MENSAJE_SERVICIO_INVALIDO };
+      default:
+        console.error("completeScheduledAppointmentAction:", error.message);
+        return { success: false, error: MENSAJE_ERROR_GENERICO };
+    }
   }
 
   revalidatePath("/agenda");
+  revalidatePath("/inicio");
   revalidatePath("/caja");
-  return { success: true, data: updated as Appointment };
+  return { success: true, data: data as Appointment };
 }
 
 /**
@@ -352,5 +280,6 @@ export async function cancelAppointmentAction(
   }
 
   revalidatePath("/agenda");
+  revalidatePath("/inicio");
   return { success: true, data: updated as Appointment };
 }

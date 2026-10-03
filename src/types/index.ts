@@ -11,6 +11,14 @@ export type AppointmentStatus =
 export type CashSessionStatus = "open" | "closed";
 export type TransactionType = "income" | "expense";
 
+/**
+ * De dónde salió el movimiento (spec 09): un corte cobrado, una venta de
+ * producto o un ingreso/egreso cargado a mano. Antes sólo se distinguía por
+ * el prefijo de `description`, lo que mezclaba cortes con ventas en el
+ * ticket promedio del dueño.
+ */
+export type TransactionCategory = "service" | "product" | "manual";
+
 export interface Barbershop {
   id: string;
   name: string;
@@ -74,6 +82,7 @@ export interface Transaction {
   id: string;
   cash_session_id: string;
   type: TransactionType;
+  category: TransactionCategory;
   amount: number;
   description: string;
   created_at: string;

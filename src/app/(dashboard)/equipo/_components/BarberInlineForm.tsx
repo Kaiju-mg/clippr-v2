@@ -142,7 +142,7 @@ export function BarberInlineForm({
           />
           <Input
             id={`barber-email-${fieldPrefix}`}
-            label="Correo"
+            label="Email"
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}

@@ -52,7 +52,7 @@ export function TeamList({ team, isOwner }: TeamListProps) {
             onClick={toggleCreate}
             variant={isCreating ? "secondary" : "primary"}
           >
-            {isCreating ? "Cancelar" : "Agregar Barbero"}
+            {isCreating ? "Cancelar" : "Agregar barbero"}
           </Button>
         )}
       </div>
@@ -89,9 +89,13 @@ export function TeamList({ team, isOwner }: TeamListProps) {
                         : NIVEL_LABELS[member.level]}
                     </span>
                   </div>
-                  <span className="text-accent text-[17px] font-bold whitespace-nowrap tabular-nums">
-                    {member.commission_pct}%
-                  </span>
+                  {/* El dueño no cobra comisión: mostrarle "0%" era ruido
+                      visual que parecía un dato mal cargado (spec 09). */}
+                  {member.role !== "owner" && (
+                    <span className="text-accent-ink text-[17px] font-bold whitespace-nowrap tabular-nums">
+                      {member.commission_pct}%
+                    </span>
+                  )}
                   {isEditable && (
                     <button
                       type="button"
@@ -100,7 +104,7 @@ export function TeamList({ team, isOwner }: TeamListProps) {
                       aria-expanded={isOpen}
                       className={`grid h-8 w-8 flex-none place-items-center rounded-md border ${
                         isOpen
-                          ? "border-accent text-accent"
+                          ? "border-accent text-accent-ink"
                           : "border-line text-muted"
                       }`}
                     >

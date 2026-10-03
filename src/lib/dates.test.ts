@@ -8,6 +8,8 @@ import {
   businessToday,
   businessWeekStart,
   daysBetweenDateISO,
+  formatBusinessDateLabel,
+  formatBusinessTime,
   isValidDateISO,
   isValidTime,
   shiftDateISO,
@@ -77,5 +79,22 @@ describe("rangos de la spec 08", () => {
       start: "2026-09-14T03:00:00.000Z",
       end: "2026-09-18T03:00:00.000Z",
     });
+  });
+});
+
+describe("formateo para pantalla", () => {
+  it("la etiqueta de un día no se corre de día por la zona horaria", () => {
+    // Si el día calendario se formateara en America/Asuncion en vez de en
+    // UTC, "2026-09-20T00:00:00Z" caería el 19 a las 21:00 y la cabecera
+    // mostraría el día anterior.
+    expect(formatBusinessDateLabel("2026-09-20")).toBe(
+      "Domingo, 20 de septiembre",
+    );
+    expect(formatBusinessDateLabel("2026-01-01")).toBe("Jueves, 1 de enero");
+  });
+
+  it("la hora de un turno se muestra en la zona del negocio", () => {
+    // 00:30 UTC del 17 son las 21:30 del 16 en Paraguay (UTC−3).
+    expect(formatBusinessTime("2026-09-17T00:30:00.000Z")).toMatch(/9:30/);
   });
 });

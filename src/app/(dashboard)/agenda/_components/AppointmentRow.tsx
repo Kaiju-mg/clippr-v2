@@ -8,7 +8,7 @@ import {
   completeScheduledAppointmentAction,
   cancelAppointmentAction,
 } from "@/actions/agenda.actions";
-import { BUSINESS_TIMEZONE } from "@/lib/dates";
+import { formatBusinessTime } from "@/lib/dates";
 import { formatGuaranies } from "@/lib/utils";
 import type { Appointment, AppointmentStatus } from "@/types";
 
@@ -17,6 +17,11 @@ interface AppointmentRowProps {
   serviceName: string;
   servicePrice: number;
   cashSessionId: string | null;
+  /**
+   * El día que se está mirando es posterior a hoy. Lo resuelve el servidor
+   * (`agenda/page.tsx`) con la zona del negocio, no el reloj del celular.
+   */
+  esDiaFuturo: boolean;
 }
 
 const STATUS_LABELS: Partial<Record<AppointmentStatus, string>> = {
@@ -25,26 +30,25 @@ const STATUS_LABELS: Partial<Record<AppointmentStatus, string>> = {
   walkin: "Cobrado",
 };
 
-function formatTime(iso: string): string {
-  return new Intl.DateTimeFormat("es-PY", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: BUSINESS_TIMEZONE,
-  }).format(new Date(iso));
-}
-
 /**
  * Fila de un turno en la agenda (spec 06). `useOptimistic` marca el
  * cambio de estado al toque, sin esperar la resolución del servidor
  * (tolerancia a internet inestable, CLAUDE.md regla 4); `router.refresh()`
  * al final reconcilia con el estado real (por ejemplo, si la caja se
  * cerró justo antes de cobrar).
+ *
+ * En un día futuro no se muestra "Cobrar": el servidor ya rechazaba esos
+ * cobros, pero el estado optimista alcanzaba a pintar "Cobrado" un par de
+ * segundos antes de que la fila volviera atrás sola (visto en el navegador
+ * el 2026-09-16). Se saca el botón en vez de sólo deshabilitarlo — un botón
+ * gris sin explicación es peor que ninguno; la leyenda dice por qué.
  */
 export function AppointmentRow({
   appointment,
   serviceName,
   servicePrice,
   cashSessionId,
+  esDiaFuturo,
 }: AppointmentRowProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -96,11 +100,11 @@ export function AppointmentRow({
             {appointment.client_name ?? "Sin nombre"}
           </span>
           <span className="text-muted text-[13px]">
-            {formatTime(appointment.start_time)} · {serviceName}
+            {formatBusinessTime(appointment.start_time)} · {serviceName}
           </span>
         </div>
         <span
-          className={`text-accent text-[17px] font-bold whitespace-nowrap tabular-nums ${
+          className={`text-accent-ink text-[17px] font-bold whitespace-nowrap tabular-nums ${
             isScheduled ? "" : "opacity-40"
           }`}
         >
@@ -119,13 +123,19 @@ export function AppointmentRow({
           >
             Cancelar
           </Button>
-          <Button
-            type="button"
-            onClick={handleComplete}
-            disabled={isPending || !cashSessionId}
-          >
-            Cobrar
-          </Button>
+          {esDiaFuturo ? (
+            <span className="text-muted text-[13px]">
+              Se cobra el día del turno
+            </span>
+          ) : (
+            <Button
+              type="button"
+              onClick={handleComplete}
+              disabled={isPending || !cashSessionId}
+            >
+              Cobrar
+            </Button>
+          )}
         </div>
       ) : (
         <span className="text-muted text-right text-[13px]">
@@ -133,7 +143,7 @@ export function AppointmentRow({
         </span>
       )}
 
-      {isScheduled && !cashSessionId && (
+      {isScheduled && !esDiaFuturo && !cashSessionId && (
         <p
           role="alert"
           className="text-danger flex items-center justify-end gap-2 text-sm"

@@ -1,9 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { CashSession } from "@/types";
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(),
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: vi.fn(),
 }));
 
 vi.mock("next/cache", () => ({
@@ -144,6 +149,15 @@ function mockCierre(escenario: Escenario = {}) {
       error: null,
     } as Result).then(onfulfilled);
 
+  // Desde la spec 09 la escritura de racha/nivel va por service_role: la
+  // sesión del barbero perdió el privilegio de UPDATE sobre esas columnas
+  // (migración 20260920010000). La LECTURA del perfil sigue yendo por la
+  // sesión normal, acotada por RLS.
+  const adminUsers = createBuilder({ data: null, error: null });
+  vi.mocked(createAdminClient).mockReturnValue({
+    from: vi.fn(() => adminUsers),
+  } as unknown as ReturnType<typeof createAdminClient>);
+
   const from = vi.fn((table: string) => {
     if (table === "users") return users;
     if (table === "transactions") return transactions;
@@ -158,12 +172,13 @@ function mockCierre(escenario: Escenario = {}) {
     },
   } as unknown as Awaited<ReturnType<typeof createClient>>);
 
-  return { users, appointments, cashSessions };
+  return { users, adminUsers, appointments, cashSessions };
 }
 
-/** Lo que se guardó en `users` (racha y nivel), o null si no se guardó nada. */
-function guardado(users: BuilderMock) {
-  const call = users.update.mock.calls.at(-1);
+/** Lo que se guardó en `users` (racha y nivel) con el cliente service_role,
+ * o null si no se guardó nada. */
+function guardado(adminUsers: BuilderMock) {
+  const call = adminUsers.update.mock.calls.at(-1);
   return call ? (call[0] as { streak_count: number; level: string }) : null;
 }
 
@@ -173,49 +188,49 @@ beforeEach(() => {
 
 describe("closeCashSessionAction — racha", () => {
   it("la primera caja con ingresos arranca la racha en 1", async () => {
-    const { users } = mockCierre({ streak: 0, previous: [] });
+    const { adminUsers } = mockCierre({ streak: 0, previous: [] });
 
     const result = await closeCashSessionAction("cs-hoy");
 
     expect(result.success).toBe(true);
-    expect(guardado(users)?.streak_count).toBe(1);
+    expect(guardado(adminUsers)?.streak_count).toBe(1);
   });
 
   it("haber trabajado ayer suma un día", async () => {
-    const { users } = mockCierre({
+    const { adminUsers } = mockCierre({
       streak: 5,
       previous: [{ id: "cs-ayer", start_time: "2026-09-16T12:00:00.000Z" }],
     });
 
     await closeCashSessionAction("cs-hoy");
 
-    expect(guardado(users)?.streak_count).toBe(6);
+    expect(guardado(adminUsers)?.streak_count).toBe(6);
   });
 
   it("un día salteado no rompe la racha: es el día de gracia", async () => {
-    const { users } = mockCierre({
+    const { adminUsers } = mockCierre({
       streak: 5,
       previous: [{ id: "cs-anteayer", start_time: "2026-09-15T12:00:00.000Z" }],
     });
 
     await closeCashSessionAction("cs-hoy");
 
-    expect(guardado(users)?.streak_count).toBe(6);
+    expect(guardado(adminUsers)?.streak_count).toBe(6);
   });
 
   it("tres días sin caja rompen la racha y vuelve a 1", async () => {
-    const { users } = mockCierre({
+    const { adminUsers } = mockCierre({
       streak: 40,
       previous: [{ id: "cs-viejo", start_time: "2026-09-14T12:00:00.000Z" }],
     });
 
     await closeCashSessionAction("cs-hoy");
 
-    expect(guardado(users)?.streak_count).toBe(1);
+    expect(guardado(adminUsers)?.streak_count).toBe(1);
   });
 
   it("una caja anterior sin ingresos no cuenta como jornada trabajada", async () => {
-    const { users } = mockCierre({
+    const { adminUsers } = mockCierre({
       streak: 5,
       previous: [
         { id: "cs-ayer-vacia", start_time: "2026-09-16T12:00:00.000Z" },
@@ -227,11 +242,11 @@ describe("closeCashSessionAction — racha", () => {
 
     await closeCashSessionAction("cs-hoy");
 
-    expect(guardado(users)?.streak_count).toBe(1);
+    expect(guardado(adminUsers)?.streak_count).toBe(1);
   });
 
   it("una segunda caja el mismo día no suma dos veces", async () => {
-    const { users } = mockCierre({
+    const { adminUsers } = mockCierre({
       streak: 6,
       previous: [
         { id: "cs-manana", start_time: "2026-09-17T11:00:00.000Z" },
@@ -241,20 +256,20 @@ describe("closeCashSessionAction — racha", () => {
 
     await closeCashSessionAction("cs-hoy");
 
-    expect(guardado(users)?.streak_count).toBe(6);
+    expect(guardado(adminUsers)?.streak_count).toBe(6);
   });
 
   it("cerrar a las 2 AM sigue contando como la jornada anterior", async () => {
     // La caja se abrió el 17 a las 09:00 de Paraguay y se cierra pasada la
     // medianoche: lo que manda es start_time, no el reloj del cierre.
-    const { users, appointments } = mockCierre({
+    const { adminUsers, appointments } = mockCierre({
       streak: 2,
       previous: [{ id: "cs-ayer", start_time: "2026-09-16T12:00:00.000Z" }],
     });
 
     await closeCashSessionAction("cs-hoy");
 
-    expect(guardado(users)?.streak_count).toBe(3);
+    expect(guardado(adminUsers)?.streak_count).toBe(3);
     // La ventana de niveles termina el 17, el día de apertura.
     expect(appointments.lt).toHaveBeenCalledWith(
       "start_time",
@@ -263,7 +278,7 @@ describe("closeCashSessionAction — racha", () => {
   });
 
   it("una caja cerrada sin un solo ingreso no toca la racha", async () => {
-    const { users } = mockCierre({
+    const { adminUsers } = mockCierre({
       streak: 7,
       income: 0,
       previous: [{ id: "cs-viejo", start_time: "2026-09-01T12:00:00.000Z" }],
@@ -271,17 +286,17 @@ describe("closeCashSessionAction — racha", () => {
 
     await closeCashSessionAction("cs-hoy");
 
-    expect(guardado(users)?.streak_count).toBe(7);
+    expect(guardado(adminUsers)?.streak_count).toBe(7);
   });
 });
 
 describe("closeCashSessionAction — nivel (ligas de 30 días)", () => {
   it("sube de liga al superar el umbral de cortes de la ventana", async () => {
-    const { users, appointments } = mockCierre({ windowCuts: 45 });
+    const { adminUsers, appointments } = mockCierre({ windowCuts: 45 });
 
     await closeCashSessionAction("cs-hoy");
 
-    expect(guardado(users)?.level).toBe("pro");
+    expect(guardado(adminUsers)?.level).toBe("pro");
     // Ventana de 30 días terminando el día de la caja (17/09 → 19/08).
     expect(appointments.gte).toHaveBeenCalledWith(
       "start_time",
@@ -290,25 +305,25 @@ describe("closeCashSessionAction — nivel (ligas de 30 días)", () => {
   });
 
   it("baja de liga si el rendimiento de los últimos 30 días bajó", async () => {
-    const { users } = mockCierre({ windowCuts: 12 });
+    const { adminUsers } = mockCierre({ windowCuts: 12 });
 
     await closeCashSessionAction("cs-hoy");
 
-    expect(guardado(users)?.level).toBe("junior");
+    expect(guardado(adminUsers)?.level).toBe("junior");
   });
 
   it("llega a élite con más de 150 cortes en la ventana", async () => {
-    const { users } = mockCierre({ windowCuts: 151 });
+    const { adminUsers } = mockCierre({ windowCuts: 151 });
 
     await closeCashSessionAction("cs-hoy");
 
-    expect(guardado(users)?.level).toBe("elite");
+    expect(guardado(adminUsers)?.level).toBe("elite");
   });
 });
 
 describe("closeCashSessionAction — la gamificación no puede tumbar el cierre", () => {
   it("la caja se cierra igual aunque falle la consulta de cortes", async () => {
-    const { users, appointments } = mockCierre();
+    const { adminUsers, appointments } = mockCierre();
     appointments.then = (onfulfilled) =>
       Promise.resolve({
         data: null,
@@ -319,16 +334,16 @@ describe("closeCashSessionAction — la gamificación no puede tumbar el cierre"
     const result = await closeCashSessionAction("cs-hoy");
 
     expect(result).toEqual({ success: true, data: CERRADA });
-    expect(users.update).not.toHaveBeenCalled();
+    expect(adminUsers.update).not.toHaveBeenCalled();
   });
 
   it("la caja se cierra igual aunque no se encuentre el perfil", async () => {
-    const { users } = mockCierre();
+    const { users, adminUsers } = mockCierre();
     users.maybeSingle = vi.fn(async () => ({ data: null, error: null }));
 
     const result = await closeCashSessionAction("cs-hoy");
 
     expect(result).toEqual({ success: true, data: CERRADA });
-    expect(users.update).not.toHaveBeenCalled();
+    expect(adminUsers.update).not.toHaveBeenCalled();
   });
 });
