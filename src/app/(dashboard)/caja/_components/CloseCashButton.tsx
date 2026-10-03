@@ -37,7 +37,7 @@ export function CloseCashButton({ sessionId }: CloseCashButtonProps) {
 
   if (isConfirming) {
     return (
-      <div className="border-line bg-surface-2 flex flex-col gap-3 rounded-lg border p-3.5">
+      <div className="border-line bg-surface-2 rounded-tile flex flex-col gap-3 border p-4">
         <p className="text-foreground text-sm">
           ¿Cerrar la caja? No vas a poder deshacer esto.
         </p>
@@ -75,7 +75,7 @@ export function CloseCashButton({ sessionId }: CloseCashButtonProps) {
       type="button"
       variant="secondary"
       onClick={() => setIsConfirming(true)}
-      className="w-full py-4 text-lg"
+      className="rounded-tile w-full py-4 text-lg"
     >
       Cerrar caja
     </Button>

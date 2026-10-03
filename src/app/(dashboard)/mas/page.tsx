@@ -1,10 +1,14 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { ChevronRight } from "lucide-react";
 import { logoutAction } from "@/actions/auth.actions";
+import { ThemeSwitch } from "@/components/ui/ThemeSwitch";
+import { parseTheme, THEME_COOKIE } from "@/lib/theme";
 
 // Estadísticas entra acá y no en la BottomNav: la barra se mantiene en 4
 // íconos de uso diario (decisión del 2026-09-15, ver docs/decisiones.md) y
-// las estadísticas tienen cadencia semanal/mensual.
+// las estadísticas tienen cadencia semanal/mensual. El nivel del barbero
+// también se mira desde acá, dentro de Estadísticas.
 const LINKS = [
   { href: "/estadisticas", label: "Estadísticas" },
   { href: "/servicios", label: "Servicios" },
@@ -13,10 +17,17 @@ const LINKS = [
   { href: "/mas/cambiar-password", label: "Cambiar contraseña" },
 ];
 
-export default function MasPage() {
+export default async function MasPage() {
+  const store = await cookies();
+  const theme = parseTheme(store.get(THEME_COOKIE)?.value);
+
   return (
     <div className="flex flex-col gap-4 p-4">
       <h1 className="font-display text-xl font-semibold">Más</h1>
+
+      <div className="border-line border-b">
+        <ThemeSwitch initialTheme={theme} />
+      </div>
 
       <ul className="flex flex-col">
         {LINKS.map(({ href, label }) => (

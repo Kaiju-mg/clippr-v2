@@ -19,7 +19,7 @@ export function Switch({ checked, onChange, label, disabled }: SwitchProps) {
       }`}
     >
       <span
-        className={`ml-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+        className={`bg-accent-contrast ml-0.5 h-4 w-4 rounded-full shadow-sm transition-transform ${
           checked ? "translate-x-[18px]" : "translate-x-0"
         }`}
       />

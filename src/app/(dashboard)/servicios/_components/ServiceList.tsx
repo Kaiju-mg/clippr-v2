@@ -124,7 +124,7 @@ export function ServiceList({ services }: ServiceListProps) {
                     </span>
                   </div>
                   <span
-                    className={`text-accent text-[17px] font-bold whitespace-nowrap tabular-nums ${
+                    className={`text-accent-ink text-[17px] font-bold whitespace-nowrap tabular-nums ${
                       service.is_active ? "" : "opacity-40"
                     }`}
                   >
@@ -147,7 +147,7 @@ export function ServiceList({ services }: ServiceListProps) {
                       aria-expanded={isOpen}
                       className={`grid h-8 w-8 place-items-center rounded-md border ${
                         isOpen
-                          ? "border-accent text-accent"
+                          ? "border-accent text-accent-ink"
                           : "border-line text-muted"
                       }`}
                     >

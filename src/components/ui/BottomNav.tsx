@@ -44,7 +44,7 @@ export function BottomNav() {
                 href={href}
                 aria-current={isActive ? "page" : undefined}
                 className={`flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium ${
-                  isActive ? "text-accent" : "text-muted"
+                  isActive ? "text-accent-ink" : "text-muted"
                 }`}
               >
                 <Icon size={22} strokeWidth={isActive ? 2.25 : 1.5} />

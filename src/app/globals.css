@@ -1,12 +1,33 @@
 @import "tailwindcss";
 
 /*
- * Tema fijo claro (sin prefers-color-scheme): decisión de diseño del
- * 2026-09-14, ver docs/decisiones.md. "Tinta" (#1f3a5f) es el acento de
- * marca — evocando el color de una barbería real sin caer en el
- * azul-SaaS genérico ni en naranja/neón.
+ * Dos temas, claro y oscuro, conmutados por `data-theme` en el <html> — que
+ * escribe el servidor leyendo la cookie `clippr-theme` (ver
+ * `src/app/layout.tsx`). A propósito sin `prefers-color-scheme`: el tema lo
+ * elige el barbero en /mas, no el sistema operativo. Esto reemplaza la
+ * decisión del 2026-09-14 ("tema fijo claro"), ver docs/decisiones.md
+ * (2026-09-20).
+ *
+ * "Tinta" (#1f3a5f) sigue siendo el acento de marca — evocando el color de
+ * una barbería real sin caer en el azul-SaaS genérico ni en naranja/neón. En
+ * oscuro se aclara, pero no cambia de familia: sigue siendo el mismo azul.
+ *
+ * Por qué el acento viene en tres variantes: el mismo color se usa como
+ * relleno (`bg-accent`, con texto encima) y como tinta de texto o ícono
+ * (`text-accent-ink`, sobre el fondo de la página). Un solo valor no puede
+ * servir para las dos cosas al invertir el tema — el que contrasta sobre
+ * blanco no contrasta sobre carbón.
  */
+/*
+ * `dark:` tiene que seguir al `data-theme` que elige el barbero, no al
+ * `prefers-color-scheme` del sistema (que es el default de Tailwind v4).
+ * Casi nada lo necesita —los tokens de abajo hacen el trabajo—, pero si
+ * alguien escribe `dark:algo` alguna vez, que apunte al mismo lugar.
+ */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 :root {
+  color-scheme: light;
   --background: #ffffff;
   --foreground: #17171a;
   --muted: #74736c;
@@ -14,7 +35,25 @@
   --surface-2: #f6f6f4;
   --accent: #1f3a5f;
   --accent-strong: #16283f;
+  --accent-contrast: #ffffff;
+  --accent-ink: #1f3a5f;
+  --success: #2f6b4f;
   --danger: #a83b32;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #0f141b;
+  --foreground: #f2f4f7;
+  --muted: #9aa6b6;
+  --line: #27313f;
+  --surface-2: #1a2230;
+  --accent: #3d6da8;
+  --accent-strong: #5386bf;
+  --accent-contrast: #ffffff;
+  --accent-ink: #8fb4dd;
+  --success: #7fd0a4;
+  --danger: #f0938a;
 }
 
 @theme inline {
@@ -25,9 +64,15 @@
   --color-surface-2: var(--surface-2);
   --color-accent: var(--accent);
   --color-accent-strong: var(--accent-strong);
+  --color-accent-contrast: var(--accent-contrast);
+  --color-accent-ink: var(--accent-ink);
+  --color-success: var(--success);
   --color-danger: var(--danger);
   --font-sans: var(--font-inter);
   --font-display: var(--font-inter);
+  /* Radio del "cubo" de la grilla bento. Vive acá para cambiar el redondeo
+     de las cuatro pantallas desde un solo lugar. */
+  --radius-tile: 1.25rem;
 }
 
 body {

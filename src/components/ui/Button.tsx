@@ -13,7 +13,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
  * porque es una acción destructiva y necesita su propia señal.
  */
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  primary: "bg-accent text-white",
+  primary: "bg-accent text-accent-contrast",
   secondary: "bg-surface-2 text-foreground",
   ghost: "bg-transparent text-foreground",
   danger: "border border-danger text-danger",

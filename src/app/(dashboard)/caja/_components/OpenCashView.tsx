@@ -97,7 +97,7 @@ export function OpenCashView() {
       <Button
         type="submit"
         disabled={isLoading}
-        className="w-full max-w-xs py-4 text-lg"
+        className="rounded-tile w-full max-w-xs py-4 text-lg"
       >
         {isLoading ? "Abriendo caja..." : "Abrir caja"}
       </Button>

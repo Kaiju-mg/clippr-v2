@@ -11,6 +11,7 @@ import type { Product } from "@/types";
 interface SellProductFormProps {
   /** Solo productos activos. */
   products: Product[];
+  onClose: () => void;
 }
 
 /**
@@ -18,9 +19,8 @@ interface SellProductFormProps {
  * monto que entra en la caja lo calcula `sellProductAction` con el precio
  * de la base, y ahí también se valida el stock.
  */
-export function SellProductForm({ products }: SellProductFormProps) {
+export function SellProductForm({ products, onClose }: SellProductFormProps) {
   const router = useRouter();
-  const [isOpen, setIsOpen] = useState(false);
   const firstInStock = products.find((product) => product.stock > 0);
   const [productId, setProductId] = useState(firstInStock?.id ?? "");
   const [quantity, setQuantity] = useState("1");
@@ -35,9 +35,9 @@ export function SellProductForm({ products }: SellProductFormProps) {
       : null;
 
   function close() {
-    setIsOpen(false);
     setError(null);
     setQuantity("1");
+    onClose();
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -62,24 +62,15 @@ export function SellProductForm({ products }: SellProductFormProps) {
     router.refresh();
   }
 
-  if (!isOpen) {
-    return (
-      <Button
-        type="button"
-        variant="secondary"
-        onClick={() => setIsOpen(true)}
-        className="w-full py-3"
-      >
-        Vender producto
-      </Button>
-    );
-  }
-
   return (
     <form
       onSubmit={handleSubmit}
-      className="bg-surface-2 flex flex-col gap-3 rounded-lg p-3.5"
+      className="bg-surface-2 border-line rounded-tile flex flex-col gap-3 border p-4"
     >
+      <p className="text-muted text-[0.625rem] font-medium tracking-[0.14em] uppercase">
+        Vender producto
+      </p>
+
       <div className="flex flex-col gap-1">
         <label
           htmlFor="sell-product"

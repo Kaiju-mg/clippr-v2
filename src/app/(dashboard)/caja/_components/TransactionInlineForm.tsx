@@ -8,27 +8,30 @@ import { useAmountInput } from "@/components/forms/useAmountInput";
 import { registerTransactionAction } from "@/actions/cash.actions";
 import type { TransactionType } from "@/types";
 
+interface TransactionInlineFormProps {
+  /**
+   * Ingreso o egreso. Lo decide el cubo que se tocó en la grilla
+   * (`CashActionsBento`), no un selector dentro del formulario: el tipo de
+   * movimiento es la elección principal y merece un cubo propio.
+   */
+  type: TransactionType;
+  onClose: () => void;
+}
+
 /**
  * Ingreso o egreso manual en la caja abierta (ej. comprar café). Acordeón
  * in-line, sin modal. El monto viaja como entero: la máscara con puntos de
  * miles es solo visual (useAmountInput). La caja la resuelve el servidor.
  */
-export function TransactionInlineForm() {
+export function TransactionInlineForm({
+  type,
+  onClose,
+}: TransactionInlineFormProps) {
   const router = useRouter();
-  const [isOpen, setIsOpen] = useState(false);
-  const [type, setType] = useState<TransactionType>("expense");
   const amount = useAmountInput();
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-
-  function close() {
-    setIsOpen(false);
-    setError(null);
-    setType("expense");
-    setDescription("");
-    amount.reset();
-  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,52 +51,18 @@ export function TransactionInlineForm() {
       return;
     }
 
-    close();
+    onClose();
     router.refresh();
-  }
-
-  if (!isOpen) {
-    return (
-      <Button
-        type="button"
-        variant="secondary"
-        onClick={() => setIsOpen(true)}
-        className="w-full py-3"
-      >
-        Movimiento manual
-      </Button>
-    );
   }
 
   return (
     <form
       onSubmit={handleSubmit}
-      className="bg-surface-2 flex flex-col gap-3 rounded-lg p-3.5"
+      className="bg-surface-2 border-line rounded-tile flex flex-col gap-3 border p-4"
     >
-      <div
-        role="group"
-        aria-label="Tipo de movimiento"
-        className="bg-background grid grid-cols-2 gap-1 rounded p-1"
-      >
-        {(
-          [
-            { value: "expense", label: "Egreso" },
-            { value: "income", label: "Ingreso" },
-          ] as const
-        ).map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={type === option.value}
-            onClick={() => setType(option.value)}
-            className={`rounded py-2 text-sm font-medium transition-colors ${
-              type === option.value ? "bg-accent text-white" : "text-muted"
-            }`}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
+      <p className="text-muted text-[0.625rem] font-medium tracking-[0.14em] uppercase">
+        {type === "expense" ? "Nuevo egreso" : "Nuevo ingreso"}
+      </p>
 
       <div className="flex flex-col gap-1">
         <label
@@ -133,7 +102,7 @@ export function TransactionInlineForm() {
         <Button
           type="button"
           variant="secondary"
-          onClick={close}
+          onClick={onClose}
           disabled={isLoading}
         >
           Cancelar

@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+import { cookies } from "next/headers";
+import { parseTheme, THEME_BROWSER_COLOR, THEME_COOKIE } from "@/lib/theme";
 import "./globals.css";
 
 const inter = Inter({
@@ -19,19 +21,37 @@ export const metadata: Metadata = {
   },
 };
 
-export const viewport: Viewport = {
-  themeColor: "#ffffff",
-  width: "device-width",
-  initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
-};
+/** Lee la cookie del tema (`@/lib/theme`), no `prefers-color-scheme`. */
+async function currentTheme() {
+  const store = await cookies();
+  return parseTheme(store.get(THEME_COOKIE)?.value);
+}
 
-export default function RootLayout({
+// La barra del navegador tiene que acompañar al tema elegido, así que el
+// viewport se genera por request en vez de ser una constante.
+export async function generateViewport(): Promise<Viewport> {
+  return {
+    themeColor: THEME_BROWSER_COLOR[await currentTheme()],
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+  };
+}
+
+/**
+ * El tema se resuelve en el servidor y baja como `data-theme` en el `<html>`:
+ * el HTML ya llega pintado, sin el parpadeo típico de leer `localStorage` en
+ * un script inline. Leer la cookie vuelve dinámica la raíz, que ya lo era de
+ * hecho por las cookies de sesión de Supabase.
+ */
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const theme = await currentTheme();
+
   return (
-    <html lang="es" className={inter.variable}>
+    <html lang="es" className={inter.variable} data-theme={theme}>
       <body>{children}</body>
     </html>
   );
