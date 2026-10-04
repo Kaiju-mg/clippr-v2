@@ -1657,3 +1657,25 @@ Descartado: papel (`--paper`) para las pantallas vacías.
 Por qué: una lista vacía no es un objeto impreso (regla 4); en oscuro un
 papel claro por cada pantalla vacía gritaría más que el contenido.
 Costo: dos tonos para el mismo componente.
+
+## 2026-10-04 — Ícono: el poste sobre papel, con un maskable aparte
+Elegido (spec 10, fase 5): el poste de barbería plano sobre `#fffdf6`,
+diseñado en Claude Design. `public/icons/`: `icon-192.png` e
+`icon-512.png` con `purpose: "any"`, `icon-maskable-512.png` con
+`purpose: "maskable"` (el poste dentro del círculo del 80%) y
+`apple-touch-icon.png` (180×180, sin transparencia) declarado en la metadata
+del layout. `background_color` y `theme_color` del manifest pasan de
+`#0a0a0a` a `#fffdf6`: Android arma la pantalla de arranque con ese fondo y
+el ícono. Los SVG fuente y la vista previa quedan en `design/icono/`, fuera
+de `public/`.
+Descartado: un solo PNG con `"any maskable"` (como estaba): el sistema lo
+recorta en círculo también donde se usa entero, y el poste se corta; y las
+imágenes de arranque de iOS (`apple-touch-startup-image`, una por tamaño de
+pantalla).
+Por qué: el ícono es el primer contacto con la app y tiene que ser el mismo
+mundo de papel, tinta y sello. El `theme_color` del manifest es el valor
+estático; la barra del navegador ya sigue al tema elegido con
+`generateViewport` (cookie), así que en oscuro sigue siendo `#161412`.
+Costo: en iPhone, al abrir la app instalada se ve un fondo blanco liso en
+vez del poste mientras carga. `test pwa-manifest` falla si alguien cambia
+el manifest o reemplaza un PNG por uno del tamaño equivocado.

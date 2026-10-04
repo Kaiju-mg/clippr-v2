@@ -1,2 +1,7 @@
 /_next/static/*
   Cache-Control: public,max-age=31536000,immutable
+
+# Íconos de la PWA (spec 10, fase 5). Una semana y no `immutable`: los nombres
+# no llevan hash, así que si se cambia el ícono tiene que poder renovarse.
+/icons/*
+  Cache-Control: public,max-age=604800

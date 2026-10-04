@@ -233,7 +233,7 @@ usan `cash_sessions` y `transactions`, que el dueño ya puede leer desde
 
 ## Fase 5: Pulido final
 
-- [ ] **Ícono de la app y pantalla de arranque:** el poste sobre fondo
+- [x] **Ícono de la app y pantalla de arranque:** el poste sobre fondo
   papel. `public/manifest.json` pasa de `#0a0a0a` a `background_color:
   "#fffdf6"` y `theme_color: "#fffdf6"`. Íconos 192/512 + versión
   `maskable` + `apple-touch-icon`.

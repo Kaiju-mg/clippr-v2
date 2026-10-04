@@ -859,7 +859,7 @@ el minimalismo a propósito. **Sin migraciones.**
   reales en los dos temas con una página temporal, ya borrada. **No se
   probó con sesión iniciada** contra el proyecto real.
 
-### Tema Recibo (en curso: fases 1 a 4 implementadas)
+### Tema Recibo (fases 1 a 5 implementadas)
 
 Spec 10 (`docs/specs/10-theme-recibo.md`): la app entera pasa al material
 del ticket de papel térmico. Los colores salen del poste: blanco → papel,
@@ -1045,6 +1045,15 @@ azul → tinta, rojo → sello. Referencia visual: Artifact "Clippr en papel".
   la tarjeta de sellos y el ticket del mes con los datos del dueño en una
   página temporal (ya borrada), más una tarjeta con datos falsos para ver el
   poste del día 30.
+
+**Fase 5: ícono y pantalla de arranque (2026-10-04).** El poste sobre papel
+en `public/icons/` (192 y 512 `any`, 512 `maskable`, `apple-touch-icon`
+180×180), `background_color`/`theme_color` `#fffdf6` en
+`public/manifest.json`, `icons` en la metadata de `src/app/layout.tsx` y
+caché de una semana para `/icons/*` en `public/_headers`. SVG fuente en
+`design/icono/`. Lo verifica `src/app/__tests__/pwa-manifest.test.ts`
+(colores, propósitos y medidas reales de cada PNG). Sin imágenes de
+arranque para iOS.
 
 ## Modelo de Datos
 

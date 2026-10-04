@@ -22,6 +22,13 @@ export const metadata: Metadata = {
   title: "Clippr",
   description: "Gestión de turnos y caja para barberías",
   manifest: "/manifest.json",
+  // El poste sobre papel (spec 10, fase 5). iOS no lee los íconos del
+  // manifest: necesita su `apple-touch-icon`, sin transparencia (redondea
+  // las esquinas solo). Los SVG fuente están en `design/icono/`.
+  icons: {
+    icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

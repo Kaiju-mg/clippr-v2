@@ -68,6 +68,7 @@ src/lib/utils.ts         formatGuaranies, formatAmount, cn
 src/lib/cash-summary.ts  resumen de una caja (saldo, ticket del cierre) — pura, la usa el servidor
 src/lib/dates.ts         fechas del negocio en America/Asuncion — usar siempre esto, nunca new Date() pelado para "qué día es" ni un Intl.DateTimeFormat propio para mostrar una fecha
 src/lib/theme.ts         cookie del tema claro/oscuro (la lee el layout raíz)
+public/icons/            íconos de la PWA (SVG fuente en design/icono/)
 src/actions/             Server Actions — toda mutación sensible va acá
 src/store/               Zustand (timerStore, closeCelebrationStore)
 src/types/index.ts       tipos del modelo de datos
@@ -424,7 +425,14 @@ mes anterior (`getMonthTicketAction`) compartible con `ShareTicketScreen`,
 la pantalla de compartir generalizada. Verificado: lint, typecheck, Vitest,
 build, y en el navegador contra la base real con sesión de dueño. La vista
 del barbero se vio con los datos del dueño en una página temporal (ya
-borrada). **Pendiente:** la fase 5 (ícono, cuando esté). Ver
+borrada).
+
+**Fase 5 implementada** (2026-10-04): el ícono (poste sobre papel, diseñado
+en Claude Design) en `public/icons/` con un `maskable` aparte y
+`apple-touch-icon`; el manifest pasa a `#fffdf6` (pantalla de arranque de
+Android). SVG fuente en `design/icono/`. Con esto **la spec 10 está
+completa**; queda sólo la prueba en un Android real (compartir hasta
+WhatsApp y modo avión, ver `docs/deuda-tecnica.md`). Ver
 `docs/arquitectura.md` sección "Tema Recibo".
 
 El resto (nada pendiente del backlog) sigue como estaba.
