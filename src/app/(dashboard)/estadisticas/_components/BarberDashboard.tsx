@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Scissors, Wallet } from "lucide-react";
 import { PerforatedBar } from "@/components/ui/PerforatedBar";
 import { StatTile, Tile } from "@/components/ui/Tile";
@@ -19,6 +20,11 @@ interface BarberDashboardProps {
   monthTicket?: MonthTicket | null;
   /** Tarjeta de sellos del mes (fase 4): null si la consulta falló. */
   stampCard?: StampCardData | null;
+  /**
+   * Debajo del encabezado: el selector "Mi barbería / Yo" cuando el que
+   * mira es el dueño (su propio rendimiento como barbero).
+   */
+  topSlot?: ReactNode;
 }
 
 /**
@@ -39,6 +45,7 @@ export function BarberDashboard({
   firstName,
   monthTicket = null,
   stampCard = null,
+  topSlot,
 }: BarberDashboardProps) {
   const { progress } = stats;
   const sinActividad = stats.completedCuts === 0 && stats.income === 0;
@@ -54,6 +61,8 @@ export function BarberDashboard({
           {firstName}, así viene tu día de hoy.
         </p>
       </header>
+
+      {topSlot}
 
       {/* La racha va primero: es lo que motiva a volver a entrar acá, y el
           poste necesita el ancho completo. */}

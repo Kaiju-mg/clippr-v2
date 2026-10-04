@@ -10,6 +10,7 @@ import { toggleProductStatusAction } from "@/actions/product.actions";
 import { formatGuaranies } from "@/lib/utils";
 import type { Product } from "@/types";
 import { BlankTicket } from "@/components/ticket/BlankTicket";
+import { catalogSummary } from "@/lib/catalog-summary";
 
 interface ProductListProps {
   products: Product[];
@@ -116,110 +117,120 @@ export function ProductList({ products, isOwner }: ProductListProps) {
       {optimisticProducts.length === 0 && !isCreating ? (
         <BlankTicket text="Todavía no hay productos cargados." />
       ) : (
-        <ul className="flex flex-col">
-          {optimisticProducts.map((product) => {
-            const isOpen = editingId === product.id;
-            const lowStock = isLowStock(product);
-            return (
-              <li
-                key={product.id}
-                className="border-line border-b last:border-b-0"
-              >
-                <div className="flex items-center justify-between gap-3 py-3.5">
-                  <div
-                    className={`flex min-w-0 flex-col gap-1 ${
-                      product.is_active ? "" : "opacity-40"
-                    }`}
-                  >
-                    <span className="font-display truncate text-[17px] font-semibold">
-                      {product.name}
+        <>
+          <p className="text-muted font-mono text-xs tabular-nums">
+            {catalogSummary({
+              active: optimisticProducts.filter((p) => p.is_active).length,
+              paused: optimisticProducts.filter((p) => !p.is_active).length,
+              soldOut: optimisticProducts.filter((p) => p.stock === 0).length,
+            })}
+          </p>
+          <ul className="flex flex-col">
+            {optimisticProducts.map((product) => {
+              const isOpen = editingId === product.id;
+              const lowStock = isLowStock(product);
+              return (
+                <li
+                  key={product.id}
+                  // Punteado: cada fila lleva un precio (spec 10, regla 3).
+                  className="border-muted/55 border-b border-dashed last:border-b-0"
+                >
+                  <div className="flex items-center justify-between gap-3 py-3.5">
+                    <div
+                      className={`flex min-w-0 flex-col gap-1 ${
+                        product.is_active ? "" : "opacity-40"
+                      }`}
+                    >
+                      <span className="font-display truncate text-[17px] font-semibold">
+                        {product.name}
+                      </span>
+                      {/* Agotado es algo que ya pasó: sello (spec 10). */}
+                      {product.stock === 0 ? (
+                        <span className="pt-0.5">
+                          <Stamp>Agotado</Stamp>
+                        </span>
+                      ) : (
+                        <span
+                          className={`font-mono text-[13px] tabular-nums ${
+                            lowStock ? "text-danger" : "text-muted"
+                          }`}
+                        >
+                          {`Stock: ${product.stock}`}
+                          {lowStock ? " · Stock bajo" : ""}
+                        </span>
+                      )}
+                    </div>
+                    <span
+                      className={`text-accent-ink font-mono text-[15px] font-semibold whitespace-nowrap tabular-nums ${
+                        product.is_active ? "" : "opacity-40"
+                      }`}
+                    >
+                      {formatGuaranies(product.price)}
                     </span>
-                    {/* Agotado es algo que ya pasó: sello (spec 10). */}
-                    {product.stock === 0 ? (
-                      <span className="pt-0.5">
-                        <Stamp>Agotado</Stamp>
-                      </span>
-                    ) : (
-                      <span
-                        className={`text-[13px] tabular-nums ${
-                          lowStock ? "text-danger" : "text-muted"
-                        }`}
-                      >
-                        {`Stock: ${product.stock}`}
-                        {lowStock ? " · Stock bajo" : ""}
-                      </span>
+                    {isOwner && (
+                      <div className="flex flex-none items-center gap-2">
+                        <Switch
+                          checked={product.is_active}
+                          onChange={() => handleToggleActive(product)}
+                          label={
+                            product.is_active
+                              ? `Desactivar ${product.name}`
+                              : `Activar ${product.name}`
+                          }
+                        />
+                        <button
+                          type="button"
+                          onClick={() => toggleEdit(product.id)}
+                          aria-label={isOpen ? "Cerrar edición" : "Editar"}
+                          aria-expanded={isOpen}
+                          className={`grid h-8 w-8 place-items-center rounded-md border ${
+                            isOpen
+                              ? "border-accent text-accent-ink"
+                              : "border-line text-muted"
+                          }`}
+                        >
+                          {isOpen ? (
+                            <svg
+                              viewBox="0 0 20 20"
+                              width="15"
+                              height="15"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              strokeLinecap="round"
+                            >
+                              <path d="M5.5 12.5 10 8l4.5 4.5" />
+                            </svg>
+                          ) : (
+                            <svg
+                              viewBox="0 0 20 20"
+                              width="15"
+                              height="15"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M13.3 3.3a1.6 1.6 0 0 1 2.3 2.3L6.4 14.8l-3 .8.8-3Z" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
                     )}
                   </div>
-                  <span
-                    className={`text-accent-ink font-mono text-[15px] font-semibold whitespace-nowrap tabular-nums ${
-                      product.is_active ? "" : "opacity-40"
-                    }`}
-                  >
-                    {formatGuaranies(product.price)}
-                  </span>
-                  {isOwner && (
-                    <div className="flex flex-none items-center gap-2">
-                      <Switch
-                        checked={product.is_active}
-                        onChange={() => handleToggleActive(product)}
-                        label={
-                          product.is_active
-                            ? `Desactivar ${product.name}`
-                            : `Activar ${product.name}`
-                        }
-                      />
-                      <button
-                        type="button"
-                        onClick={() => toggleEdit(product.id)}
-                        aria-label={isOpen ? "Cerrar edición" : "Editar"}
-                        aria-expanded={isOpen}
-                        className={`grid h-8 w-8 place-items-center rounded-md border ${
-                          isOpen
-                            ? "border-accent text-accent-ink"
-                            : "border-line text-muted"
-                        }`}
-                      >
-                        {isOpen ? (
-                          <svg
-                            viewBox="0 0 20 20"
-                            width="15"
-                            height="15"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.6"
-                            strokeLinecap="round"
-                          >
-                            <path d="M5.5 12.5 10 8l4.5 4.5" />
-                          </svg>
-                        ) : (
-                          <svg
-                            viewBox="0 0 20 20"
-                            width="15"
-                            height="15"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.6"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M13.3 3.3a1.6 1.6 0 0 1 2.3 2.3L6.4 14.8l-3 .8.8-3Z" />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
+                  {isOpen && (
+                    <ProductInlineForm
+                      product={product}
+                      onCancel={closeForms}
+                      onSaved={handleSaved}
+                    />
                   )}
-                </div>
-                {isOpen && (
-                  <ProductInlineForm
-                    product={product}
-                    onCancel={closeForms}
-                    onSaved={handleSaved}
-                  />
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
     </div>
   );

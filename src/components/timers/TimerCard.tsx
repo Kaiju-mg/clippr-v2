@@ -24,6 +24,13 @@ function formatElapsed(ms: number): string {
 }
 
 /**
+ * "Descartar" (2026-10-04) es para el corte que se arrancó sin querer: antes
+ * la única salida de un temporizador era cobrarlo, y eso sumaba un corte y
+ * plata a la caja, la racha y las estadísticas. Descartar no toca la base:
+ * hasta que se cobra, el temporizador vive sólo en el teléfono. Pide
+ * confirmación en línea (mismo patrón que cerrar caja) para no perder un
+ * corte de verdad con un toque.
+ *
  * El tiempo transcurrido se calcula acá adentro, en un `useEffect` local
  * que compara contra `Date.now()` cada segundo — nunca en el store global
  * de Zustand (spec 05, sección 5): si `timers` cambiara cada segundo, toda
@@ -35,6 +42,7 @@ export function TimerCard({ timer, cashSessionId, services }: TimerCardProps) {
     () => Date.now() - timer.startTime,
   );
   const [isFinishing, setIsFinishing] = useState(false);
+  const [isDiscarding, setIsDiscarding] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -78,16 +86,50 @@ export function TimerCard({ timer, cashSessionId, services }: TimerCardProps) {
             {formatElapsed(elapsedMs)}
           </span>
         </div>
-        {!isFinishing && (
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => setIsFinishing(true)}
-          >
-            Finalizar
-          </Button>
+        {!isFinishing && !isDiscarding && (
+          <div className="flex flex-none items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setIsDiscarding(true)}
+              className="text-muted rounded px-3 py-2 text-sm font-medium transition-transform duration-100 active:scale-95"
+            >
+              Descartar
+            </button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setIsFinishing(true)}
+            >
+              Finalizar
+            </Button>
+          </div>
         )}
       </div>
+
+      {isDiscarding && (
+        <div className="bg-background mt-3 flex flex-col gap-3 rounded-lg p-3.5">
+          <p className="text-sm">
+            ¿Descartar este corte? No se cobra ni se guarda.
+            {esTurnoAgendado && " El turno vuelve a “Lo que viene”."}
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setIsDiscarding(false)}
+            >
+              Volver
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              onClick={() => removeTimer(timer.id)}
+            >
+              Sí, descartar
+            </Button>
+          </div>
+        </div>
+      )}
 
       {isFinishing &&
         (esTurnoAgendado ? (

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { Scissors, Wallet } from "lucide-react";
 import { PerforatedBar } from "@/components/ui/PerforatedBar";
@@ -33,6 +34,8 @@ interface OwnerDashboardProps {
   range: RangeKey;
   /** Cierres de hoy del equipo (fase 4); null si la consulta falló. */
   closures?: TeamClosure[] | null;
+  /** Debajo del encabezado: el selector "Mi barbería / Yo". */
+  topSlot?: ReactNode;
 }
 
 /**
@@ -48,6 +51,7 @@ export function OwnerDashboard({
   stats,
   range,
   closures = [],
+  topSlot,
 }: OwnerDashboardProps) {
   const conActividad = stats.leaderboard.filter(
     (member) => member.cuts > 0 || member.income > 0,
@@ -62,6 +66,8 @@ export function OwnerDashboard({
         </h1>
         <p className="text-muted text-sm">Tu barbería, de un vistazo.</p>
       </header>
+
+      {topSlot}
 
       <nav className="flex gap-2" aria-label="Rango de fechas">
         {(Object.keys(RANGE_LABELS) as RangeKey[]).map((key) => (

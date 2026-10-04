@@ -24,6 +24,7 @@ No hay backend Python. La lógica de servidor vive en Route Handlers y Server Ac
 - docs/arquitectura.md — estado actual del diseño
 - docs/decisiones.md — por qué cada cosa es así (leer antes de refactorizar)
 - docs/backlog.md — qué falta
+- docs/produccion.md — separar la base de producción, respaldos, CPU en Cloudflare, Git
 
 ## Al empezar una sesión
 
@@ -306,8 +307,8 @@ relleno) y `--accent-ink` (acento como texto), y se sumó `--success`:
 `text-accent` como color de texto.** Verificado: lint, typecheck, 203
 tests, `npm run build` con las 14 rutas, y el mecanismo del tema contra el
 server de producción (cookie → `data-theme` → `theme-color` → CSS).
-**Pendiente:** el recorrido visual de las pantallas autenticadas en los
-dos temas, que necesita una sesión iniciada en el navegador. Ver
+El recorrido visual con sesión iniciada, en los dos temas y a 360 px, se
+hizo el 2026-10-04 (durante las pruebas de la spec 10). Ver
 `docs/arquitectura.md` sección "Bento UI y Modo Oscuro" y
 `docs/decisiones.md` (2026-09-20).
 
@@ -353,7 +354,8 @@ backlog):
   apagada) se deriva en `getBarberStatsAction`; con la racha apagada,
   `streakCount` vuelve 0. Token `--warning`. **Sin migraciones.**
   Verificado: lint, typecheck, 263 tests, build y capturas de los
-  componentes en los dos temas. **Pendiente:** verlo con sesión iniciada.
+  componentes en los dos temas. Visto con sesión iniciada el 2026-10-04
+  (`/inicio` y `/estadisticas`); falta el estado "día de gracia".
   Ver `docs/arquitectura.md` sección "Poste de la racha".
 
 Spec 10 (tema "Recibo de Barbería", `docs/specs/10-theme-recibo.md`),
@@ -412,9 +414,8 @@ real con sesión de barbero (RLS de `barbershops`, sin señal simulado, dos
 cierres con "Compartir" y el PNG real) y de dueño (teléfono desde `/mas`;
 `name`/`phone` sí, `subscription_plan` 403). Ojo: `html-to-image` espera un
 `requestAnimationFrame`, así que con la pestaña oculta la imagen no termina
-(en el navegador automatizado parece colgada). **Pendiente:** compartir hasta
-WhatsApp y el modo avión en un Android real (sobre el Worker, necesita
-HTTPS).
+(en el navegador automatizado parece colgada). Compartir hasta WhatsApp y el modo avión se
+probaron después en un Android real, sobre el Worker publicado (ver abajo).
 
 **Fase 4 implementada** (2026-10-04, sin migraciones): `BlankTicket` en las
 pantallas vacías; "Cierres de hoy" en `/estadisticas` del dueño (un ticket
@@ -430,9 +431,25 @@ borrada).
 **Fase 5 implementada** (2026-10-04): el ícono (poste sobre papel, diseñado
 en Claude Design) en `public/icons/` con un `maskable` aparte y
 `apple-touch-icon`; el manifest pasa a `#fffdf6` (pantalla de arranque de
-Android). SVG fuente en `design/icono/`. Con esto **la spec 10 está
-completa**; queda sólo la prueba en un Android real (compartir hasta
-WhatsApp y modo avión, ver `docs/deuda-tecnica.md`). Ver
-`docs/arquitectura.md` sección "Tema Recibo".
+Android). SVG fuente en `design/icono/`.
+
+**La spec 10 está completa.** Publicada en Cloudflare el 2026-10-04
+(versión `1e37f4e6`, con `npm run deploy` desde la copia local) y probada
+por el usuario en su Android: el ícono y la pantalla de arranque al
+instalar, compartir el día hasta el estado de WhatsApp y el modo avión
+durante un cobro. Los 5 commits de la spec todavía no están en GitHub (ver
+`docs/deuda-tecnica.md`, entrada de Git). Ver `docs/arquitectura.md`
+sección "Tema Recibo".
+
+Pulido después de la spec 10 (2026-10-04, sin migraciones), elegido por el
+usuario en el muestrario "Propuestas de pulido": el dueño tiene en
+`/estadisticas` un selector **"Mi barbería / Yo"** (`?vista=yo`; "Yo" es su
+propio `BarberDashboard`, sólo sus números); los catálogos (`/servicios`,
+`/productos`) son **listas en papel** (punteado, mono, línea de resumen) y
+queda oficial que los tableros son cubos y los catálogos listas; y
+`--warning` del tema claro pasa a `#9a5212` (AA). Además, un corte
+arrancado sin querer ahora se puede **descartar** desde su tarjeta (con
+confirmación; antes la única salida era cobrarlo y sumaba a la caja, la
+racha y las estadísticas). Ver `docs/decisiones.md` (2026-10-04).
 
 El resto (nada pendiente del backlog) sigue como estaba.

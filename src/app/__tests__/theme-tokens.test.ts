@@ -46,7 +46,7 @@ const SPEC: Record<string, [light: string, dark: string]> = {
   "--accent-contrast": ["#fffdf6", "#ffffff"],
   "--accent-ink": ["#1f3a5f", "#9dbbe0"],
   "--success": ["#2f6b4f", "#8fd1a8"],
-  "--warning": ["#b9651b", "#f2b06b"],
+  "--warning": ["#9a5212", "#f2b06b"],
   "--danger": ["#a83b32", "#f0938a"],
   "--stamp": ["#b3261e", "#ef8a7f"],
   "--paper": ["#fffdf6", "#f3eedf"],
@@ -125,6 +125,9 @@ describe("contraste AA (4.5:1 para texto)", () => {
     ["--accent-ink", "--background"],
     ["--accent-ink", "--surface-2"],
     ["--success", "--surface-2"],
+    // El día de gracia de la racha ("Cerrala hoy"), en texto chico.
+    ["--warning", "--background"],
+    ["--warning", "--surface-2"],
     ["--danger", "--background"],
     ["--danger", "--surface-2"],
     ["--stamp", "--background"],
@@ -157,18 +160,5 @@ describe("contraste AA (4.5:1 para texto)", () => {
         contrast(tokens["--paper-rule"], tokens["--paper"]),
       ).toBeGreaterThanOrEqual(3);
     }
-  });
-
-  it("--warning en claro no llega a AA sobre los cubos (deuda conocida)", () => {
-    // La spec 10 deja --warning "sin cambio" y da 3.7:1 sobre --surface-2:
-    // alcanza para texto grande o en negrita (3:1), no para texto chico.
-    // Anotado en docs/deuda-tecnica.md. Si alguien lo arregla, este test
-    // falla a propósito para que se actualice la deuda.
-    const ratio = contrast(
-      THEMES.light["--warning"],
-      THEMES.light["--surface-2"],
-    );
-    expect(ratio).toBeGreaterThanOrEqual(3);
-    expect(ratio).toBeLessThan(4.5);
   });
 });

@@ -1015,8 +1015,8 @@ azul → tinta, rojo → sello. Referencia visual: Artifact "Clippr en papel".
   cortes, tema claro (la imagen no cambia) y el PNG real de 1080×1920
   interceptando `navigator.share`. Con sesión de dueño: teléfono guardado
   desde `/mas` (y uno inválido rechazado), `name`/`phone` → 1 fila,
-  `subscription_plan` → 403. Pendiente: lo que sólo se puede en un Android
-  real (ver `docs/deuda-tecnica.md`).
+  `subscription_plan` → 403. Lo que sólo se puede en un Android real se
+  probó después de publicar (ver "Prueba en un teléfono real", abajo).
 
 **Fase 4: vistas expandidas (2026-10-04).** Sin migraciones.
 
@@ -1054,6 +1054,29 @@ caché de una semana para `/icons/*` en `public/_headers`. SVG fuente en
 `design/icono/`. Lo verifica `src/app/__tests__/pwa-manifest.test.ts`
 (colores, propósitos y medidas reales de cada PNG). Sin imágenes de
 arranque para iOS.
+
+**Prueba en un teléfono real (2026-10-04).** Publicado en Cloudflare
+(`npm run deploy`, versión `1e37f4e6`); verificado contra producción que
+los íconos y el manifest responden 200, que `/icons/*` sale con
+`Cache-Control: public,max-age=604800` y que el HTML trae el manifest, el
+favicon y el `apple-touch-icon`. El usuario lo probó en su Android: instalar
+la PWA (ícono y pantalla de arranque), compartir el día hasta el estado de
+WhatsApp y el modo avión durante un cobro.
+
+### Pulido después de la spec 10 (2026-10-04)
+
+Elegido en el muestrario "Propuestas de pulido" (Artifact), sin
+migraciones:
+
+- **"Mi barbería / Yo" para el dueño:** `OwnerViewSwitch` (links,
+  `?vista=yo`) arriba de los dos tableros de `/estadisticas`. "Yo" renderiza
+  `BarberDashboard` con las acciones de lo propio (`personalView` en
+  `page.tsx`); el barbero no ve el selector.
+- **Listas en papel para catálogos:** `/servicios` y `/productos` con filas
+  punteadas, duraciones y stock en mono y la línea de resumen de
+  `src/lib/catalog-summary.ts`. Cubos para tableros, listas para catálogos.
+- **`--warning` claro `#9a5212`:** pasa AA sobre el papel y los cubos;
+  verificado en `theme-tokens.test.ts`.
 
 ## Modelo de Datos
 

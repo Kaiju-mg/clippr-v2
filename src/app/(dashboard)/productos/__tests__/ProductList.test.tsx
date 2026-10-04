@@ -57,3 +57,26 @@ describe("ProductList — tema Recibo", () => {
     );
   });
 });
+
+describe("ProductList — lista en papel (catálogos, 2026-10-04)", () => {
+  it("arriba, el resumen del catálogo en mono", () => {
+    render(
+      <ProductList
+        products={[
+          product({ id: "a" }),
+          product({ id: "b", stock: 0 }),
+          product({ id: "c", is_active: false }),
+        ]}
+        isOwner={false}
+      />,
+    );
+    expect(screen.getByText("2 activos · 1 pausado · 1 agotado")).toHaveClass(
+      "font-mono",
+    );
+  });
+
+  it("las filas van punteadas: cada una lleva un precio", () => {
+    render(<ProductList products={[product({})]} isOwner={false} />);
+    expect(screen.getByRole("listitem")).toHaveClass("border-dashed");
+  });
+});

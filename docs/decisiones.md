@@ -1679,3 +1679,63 @@ estático; la barra del navegador ya sigue al tema elegido con
 Costo: en iPhone, al abrir la app instalada se ve un fondo blanco liso en
 vez del poste mientras carga. `test pwa-manifest` falla si alguien cambia
 el manifest o reemplaza un PNG por uno del tamaño equivocado.
+
+## 2026-10-04 — El dueño elige entre "Mi barbería" y "Yo"
+Elegido: en `/estadisticas`, el dueño ve arriba un selector (links,
+`?vista=yo`, igual que `?rango=`). "Mi barbería" es el tablero del negocio
+y queda por defecto; "Yo" es su rendimiento como barbero: el mismo
+`BarberDashboard` que ve cualquier barbero (racha, cortes, lo que cobró él,
+nivel, tarjeta de sellos y ticket del mes), **sólo con sus números**. Al
+barbero no se le muestra el selector y el parámetro no le cambia nada.
+Descartado: dejar al dueño sin acceso a su racha (como estaba), y mezclar
+sus números personales dentro del tablero del negocio.
+Por qué: el dueño de una barbería chica también corta, y la racha y el
+nivel son lo que hace volver a la app. Las acciones del barbero ya
+consultan lo del perfil autenticado con `user_id` a mano, así que sirven
+igual para el dueño: es reusar, sin migraciones. Lo pidió el usuario
+después de ver el muestrario "Propuestas de pulido".
+Costo: el dueño sigue en el ranking del equipo sólo por lo que cobra; su
+nivel se ve en "Yo", no compite en otra liga.
+
+## 2026-10-04 — Dos patrones oficiales: cubos para tableros, listas para catálogos
+Elegido: `/inicio`, `/caja` y `/estadisticas` son grilla de cubos (pocas
+cifras que se miran); `/servicios`, `/productos` y `/equipo` son listas
+(muchas filas que se recorren y se editan en línea). Las listas de
+catálogos entran al mundo de papel: filas punteadas donde hay precio (regla
+3 de la spec 10), duraciones y stock en `font-mono` y una línea de resumen
+arriba (`catalogSummary`: "3 activos · 1 pausado · 2 agotados"). `/equipo`
+sigue con línea lisa: sus filas no llevan plata.
+Descartado: pasar los catálogos a cubos.
+Por qué: el bento escala mal con la cantidad (una barbería con 15
+productos son 8 filas de cubos) y la edición en línea se complica adentro
+de un cubo. El usuario eligió la opción "lista en papel" en el muestrario.
+Costo: dos patrones de layout conviven a propósito; una pantalla nueva
+tiene que elegir uno de los dos según si es tablero o catálogo.
+
+## 2026-10-04 — `--warning` claro pasa de `#b9651b` a `#9a5212`
+Elegido: el naranja de advertencia del tema claro (el día de gracia de la
+racha, "Cerrala hoy") se oscurece a `#9a5212`: 5,75:1 sobre el papel y
+5,10:1 sobre los cubos. El oscuro (`#f2b06b`) no cambia. `--warning` entra
+en los pares de texto de `theme-tokens.test.ts` que deben pasar AA en los
+dos temas, y el test que fallaba a propósito se fue.
+Descartado: dejarlo "sin cambio" como pedía la spec 10 (4,18:1 y 3,71:1,
+no pasaba AA para texto chico).
+Por qué: muchas barberías dan a la calle y el barbero mira el celular a
+pleno sol. El color sigue leyéndose como advertencia y no se confunde con
+el rojo del sello ni con el de error.
+Costo: ninguno visible; la tabla de tokens de la spec 10 quedó actualizada.
+
+## 2026-10-04 — Un corte arrancado sin querer se descarta, no se cobra
+Elegido: la tarjeta del temporizador suma "Descartar" al lado de
+"Finalizar", con confirmación en línea ("¿Descartar este corte? No se cobra
+ni se guarda.", "Volver" / "Sí, descartar"). Descartar sólo saca el
+temporizador del store: hasta que se cobra, un corte no existe en la base.
+Si el temporizador era de un turno agendado, el turno vuelve a "Lo que
+viene" sin cancelarse.
+Descartado: dejarlo como estaba, y descartar sin confirmación.
+Por qué: lo reportó el usuario. Antes la única salida de un temporizador
+era cobrarlo, así que un toque de más en "Iniciar corte" terminaba como un
+corte y plata de mentira en la caja, la racha, el nivel y las estadísticas.
+La confirmación evita lo contrario: perder un corte de verdad con un toque.
+Costo: un botón más en la tarjeta; queda en gris para no competir con
+"Finalizar".

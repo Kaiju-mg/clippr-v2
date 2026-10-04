@@ -48,7 +48,9 @@
   --accent-contrast: #fffdf6;
   --accent-ink: #1f3a5f;
   --success: #2f6b4f;
-  --warning: #b9651b;
+  /* Antes #b9651b (4,2:1 sobre el papel): más oscuro para que el texto chico
+     del día de gracia pase AA a la luz del sol (2026-10-04). */
+  --warning: #9a5212;
   --danger: #a83b32;
   --stamp: #b3261e;
   --paper: #fffdf6;

@@ -55,7 +55,7 @@ los tokens, los componentes ya los usan.*
   | `--accent-contrast` | `#fffdf6` | `#ffffff` | |
   | `--accent-ink` | `#1f3a5f` | `#9dbbe0` | |
   | `--success` | `#2f6b4f` | `#8fd1a8` | |
-  | `--warning` | `#b9651b` | `#f2b06b` | Sin cambio |
+  | `--warning` | `#9a5212` | `#f2b06b` | Claro oscurecido el 2026-10-04 (era `#b9651b`, no pasaba AA) |
   | `--danger` | `#a83b32` | `#f0938a` | Sin cambio: errores |
   | `--stamp` **(nuevo)** | `#b3261e` | `#ef8a7f` | Sólo sellos (regla 2) |
   | `--paper` **(nuevo)** | `#fffdf6` | `#f3eedf` | Papel del ticket: claro también en oscuro |
