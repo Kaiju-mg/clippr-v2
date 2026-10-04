@@ -859,7 +859,7 @@ el minimalismo a propósito. **Sin migraciones.**
   reales en los dos temas con una página temporal, ya borrada. **No se
   probó con sesión iniciada** contra el proyecto real.
 
-### Tema Recibo (en curso: fase 1 implementada)
+### Tema Recibo (en curso: fases 1 y 2 implementadas)
 
 Spec 10 (`docs/specs/10-theme-recibo.md`): la app entera pasa al material
 del ticket de papel térmico. Los colores salen del poste: blanco → papel,
@@ -904,6 +904,75 @@ azul → tinta, rojo → sello. Referencia visual: Artifact "Clippr en papel".
   `/agenda`, `/estadisticas`, `/servicios` y `/productos` sin desbordes ni
   errores de consola. Los movimientos de `/caja` (hacía falta abrir una
   caja) y la barra de nivel del barbero sólo se vieron con datos falsos.
+
+#### Fase 2: el corazón temático
+
+**Sin migraciones.**
+
+- **Resumen del cierre en el servidor** (`src/lib/cash-summary.ts`,
+  `summarizeCash`): función pura que separa cortes (`category =
+  'service'`, cantidad y total), ventas (`'product'`), ingresos manuales y
+  egresos, y da el saldo final. `computeSummary` en `cash.actions.ts`
+  (reemplaza a `computeBalance`) la usa para **todo**: el saldo de `/caja`,
+  el `final_balance` del cierre y el ticket. Así el TOTAL impreso es el
+  mismo número que queda guardado por construcción.
+  `closeCashSessionAction` devuelve `{ session, streak, summary,
+  barberName }`.
+- **`<Stamp />`** (`src/components/ui/Stamp.tsx`): sello en `--stamp`,
+  mayúsculas, `sm` (−6°) y `md` (−8°), `double` para el doble borde. La
+  animación (`animate-stamp-slam`, escala 2,6 → 0,92 → 1) se decide **al
+  montar** con `useState`: cambiar la prop después no la repite. Usos:
+  COBRADO (`/agenda`), AGOTADO (`/productos`), MEJOR DE HOY / DE LA SEMANA /
+  DEL MES (primero del ranking del dueño) y la racha del cierre.
+- **`<TicketReceipt />`** (`src/components/ticket/TicketReceipt.tsx`): sólo
+  presentación; recibe `TicketLine[]` (`center` / `row` / `rule`) y un
+  `footer`. Papel `--paper`, Courier Prime 11,5px con `preload: false` (se
+  baja recién cuando aparece un ticket; verificado que en `/inicio` queda
+  `unloaded`), punteado `--paper-rule` y zigzag con la clase `ticket-edge`
+  de `globals.css` (dos gradientes, sin imágenes). Adentro redefine
+  `--stamp` con `--paper-stamp` (`#b3261e` en los dos temas).
+- **El cierre** (`src/components/ticket/CloseTicket.tsx`, montado en
+  `(dashboard)/layout.tsx`) reemplaza a `StreakCelebration` (borrada): fondo
+  `rgba(18,16,13,.76)`, boca de impresora, ticket que baja con
+  `steps(14)` en 2s, sello de la racha a los 2,05s (poste chico de un color
+  + "N DÍAS DE RACHA") y "Mañana va el N+1.", y "Listo" a los 2,5s. Sale en
+  **todo** cierre; sin racha (`streak` null) sale sin sello. Los renglones
+  los arma `closeTicketLines` (pura). El store pasó a
+  `src/store/closeCelebrationStore.ts` (`useCloseCelebration`).
+- **`/caja`**: los movimientos son un ticket sobre `--surface-2` con
+  zigzag, en orden de llegada, "Saldo inicial" arriba y TOTAL = saldo del
+  servidor. `getCashMovementsAction` devuelve `{ movements, hasMore }`
+  (pide 9 para saber si hay más de 8); si hay más, en vez del saldo
+  inicial va "Más movimientos antes". Los egresos van en tinta normal, no
+  en `--danger`.
+- **`/agenda`**: hora a la izquierda en mono, sello COBRADO bajo el monto
+  (cae sólo si se cobra en pantalla), cancelados tachados y atenuados, y
+  "Cancelar" / "Cobrar" como píldoras en el segundo renglón.
+- **`/estadisticas`**: el número de racha del barbero en `--stamp`; sello
+  en el primero del ranking del dueño.
+- **`/equipo`**: subtítulo "Nivel · mail". El mail sale de `auth.users`
+  con `getTeamEmailsAction` (clave de servicio) **sólo para el dueño**; a un
+  barbero no se le muestran los mails del equipo.
+- **`/mas`**: `BarbershopCard` arriba (poste, barbería, "Nombre · Rol",
+  plan) con borde punteado; lee `users` + `barbershops` con RLS.
+- **Login y registro**: `AuthShell` (poste, "Clippr", "Turnos, caja y racha
+  de tu barbería" y el formulario en una tarjeta de papel con zigzag).
+- **Prueba:** Vitest (402 tests; `next/font/google` mockeado en
+  `vitest.setup.ts`). En el navegador, a 360 px y en los dos temas: con
+  sesión de dueño, `/agenda` (7 sellos COBRADO quietos), `/productos`
+  (AGOTADO), `/estadisticas` (MEJOR DE HOY), `/equipo` (mails reales) y
+  `/mas` (tarjeta); login y registro; y con una página temporal (ya
+  borrada) el ticket de `/caja` y la animación del cierre, con y sin
+  racha, incluido el papel claro en tema oscuro.
+- **Prueba contra la base real (2026-10-04):** con sesión de dueño, venta,
+  egreso y walk-in en una caja abierta → ticket de `/caja` con TOTAL
+  80.000 = saldo → cierre con la animación y el sello "2 DÍAS DE RACHA".
+  Verificado en la base con un script de sólo lectura: `final_balance`
+  80.000, `category` `product`/`manual`/`service` y `streak_count` 1 → 2.
+  Una segunda caja el mismo día (ingreso manual, tema claro) imprime su
+  ticket con "Otros ingresos" y `final_balance` 17.000, y la racha queda en
+  2. Con sesión de barbero, `/estadisticas`: racha en `--stamp` y barra de
+  nivel perforada. Sin errores de consola.
 
 ## Modelo de Datos
 

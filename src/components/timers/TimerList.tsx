@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Play } from "lucide-react";
+import Link from "next/link";
+import { ChevronRight, Play, Wallet } from "lucide-react";
 import { Input } from "@/components/ui/Input";
+import { tileClasses } from "@/components/ui/Tile";
 import { TimerCard } from "./TimerCard";
 import { useTimerStore, useTimerStoreHydrated } from "@/store/timerStore";
 import type { Service } from "@/types";
@@ -33,10 +35,31 @@ export function TimerList({ cashSessionId, services }: TimerListProps) {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Un cubo que lleva a /caja y no un texto en rojo: la caja cerrada
+          no es un error (empezar un corte no la necesita, regla 4) ni algo
+          que ya pasó, así que tampoco va de sello (spec 10, regla 2). */}
       {!cashSessionId && (
-        <p role="alert" className="text-danger text-sm">
-          Debes abrir tu caja diaria antes de cobrar un corte.
-        </p>
+        <Link
+          href="/caja"
+          className={tileClasses(
+            "default",
+            "flex-row items-center gap-3 px-3.5 py-3 transition-transform active:scale-[0.98]",
+          )}
+        >
+          <span className="border-line bg-background text-muted grid h-9 w-9 flex-none place-items-center rounded-full border">
+            <Wallet size={18} strokeWidth={1.5} />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-sm font-medium">Tu caja está cerrada</span>
+            <span className="text-muted text-xs">
+              Abrila para poder cobrar los cortes.
+            </span>
+          </span>
+          <span className="text-accent-ink flex flex-none items-center gap-0.5 text-sm font-medium">
+            Abrir
+            <ChevronRight size={16} strokeWidth={2} />
+          </span>
+        </Link>
       )}
 
       {/* El input queda chico y secundario a propósito: sigue siendo la

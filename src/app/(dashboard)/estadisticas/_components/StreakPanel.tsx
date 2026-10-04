@@ -53,7 +53,8 @@ export function StreakPanel({ count, status }: StreakPanelProps) {
         <span className="text-accent-ink text-[0.625rem] font-bold tracking-[0.14em] uppercase">
           {POLE_NAME[tier]}
         </span>
-        <span className="font-display text-[3.5rem] leading-[0.9] font-extrabold tracking-tight tabular-nums">
+        {/* La racha es algo que ya pasó: va en tinta de sello (spec 10). */}
+        <span className="font-display text-stamp text-[3.5rem] leading-[0.9] font-semibold tracking-tight tabular-nums">
           {count}
         </span>
         <span className="text-muted text-[0.625rem] font-medium tracking-[0.14em] uppercase">

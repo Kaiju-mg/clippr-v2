@@ -18,6 +18,7 @@ vi.mock("next/cache", () => ({
 import {
   getTeamAction,
   createBarberAction,
+  getTeamEmailsAction,
   updateBarberAction,
 } from "../team.actions";
 
@@ -465,5 +466,92 @@ describe("updateBarberAction — happy path y casos borde", () => {
       error: "La comisión debe ser un porcentaje entre 0 y 100.",
     });
     expect(createClient).not.toHaveBeenCalled();
+  });
+});
+
+describe("getTeamEmailsAction — el mail en el subtítulo de /equipo", () => {
+  function mockGetUserById(emails: Record<string, string | null>) {
+    const getUserById = vi.fn(async (authId: string) =>
+      emails[authId] === undefined
+        ? { data: { user: null }, error: { message: "no existe" } }
+        : { data: { user: { email: emails[authId] } }, error: null },
+    );
+    vi.mocked(createAdminClient).mockReturnValue({
+      auth: { admin: { getUserById } },
+    } as unknown as ReturnType<typeof createAdminClient>);
+    return getUserById;
+  }
+
+  it("al dueño le devuelve el mail de cada uno, por id", async () => {
+    mockSupabaseClient({
+      fromResults: [
+        { data: OWNER_PROFILE, error: null },
+        {
+          data: [
+            { id: "u-owner", auth_id: "auth-owner" },
+            { id: "u2", auth_id: "auth-barber" },
+          ],
+          error: null,
+        },
+      ],
+    });
+    mockGetUserById({
+      "auth-owner": "dueno@elposte.com.py",
+      "auth-barber": "juan@elposte.com.py",
+    });
+
+    expect(await getTeamEmailsAction()).toEqual({
+      "u-owner": "dueno@elposte.com.py",
+      u2: "juan@elposte.com.py",
+    });
+  });
+
+  it("a un barbero no le muestra los mails de sus compañeros", async () => {
+    mockSupabaseClient({
+      fromResults: [{ data: BARBER_PROFILE, error: null }],
+    });
+    const getUserById = mockGetUserById({});
+
+    expect(await getTeamEmailsAction()).toEqual({});
+    expect(createAdminClient).not.toHaveBeenCalled();
+    expect(getUserById).not.toHaveBeenCalled();
+  });
+
+  it("sin sesión no devuelve nada", async () => {
+    mockSupabaseClient({ user: null, fromResults: [] });
+    expect(await getTeamEmailsAction()).toEqual({});
+    expect(createAdminClient).not.toHaveBeenCalled();
+  });
+
+  it("si falta la clave de servicio, devuelve vacío en vez de romper /equipo", async () => {
+    mockSupabaseClient({
+      fromResults: [
+        { data: OWNER_PROFILE, error: null },
+        { data: [{ id: "u2", auth_id: "auth-barber" }], error: null },
+      ],
+    });
+    vi.mocked(createAdminClient).mockImplementation(() => {
+      throw new Error("Falta SUPABASE_SERVICE_ROLE_KEY");
+    });
+
+    expect(await getTeamEmailsAction()).toEqual({});
+  });
+
+  it("un usuario que Auth no encuentra queda sin mail, los demás sí", async () => {
+    mockSupabaseClient({
+      fromResults: [
+        { data: OWNER_PROFILE, error: null },
+        {
+          data: [
+            { id: "u2", auth_id: "auth-barber" },
+            { id: "u3", auth_id: "auth-borrado" },
+          ],
+          error: null,
+        },
+      ],
+    });
+    mockGetUserById({ "auth-barber": "juan@elposte.com.py" });
+
+    expect(await getTeamEmailsAction()).toEqual({ u2: "juan@elposte.com.py" });
   });
 });

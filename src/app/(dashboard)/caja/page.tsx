@@ -57,7 +57,9 @@ export default async function CajaPage() {
   const activeProducts = productsResult.success
     ? productsResult.data.filter((product) => product.is_active)
     : [];
-  const movements = movementsResult.success ? movementsResult.data : [];
+  const movements = movementsResult.success
+    ? movementsResult.data
+    : { movements: [], hasMore: false };
 
   // Una caja que quedó abierta de un día anterior (el barbero se olvidó de
   // cerrarla) tiene que decir de qué día es: con sólo la hora, "abierta
@@ -126,7 +128,14 @@ export default async function CajaPage() {
 
       <CashActionsBento products={activeProducts} />
 
-      <CashMovements movements={movements} failed={!movementsResult.success} />
+      <CashMovements
+        movements={movements.movements}
+        hasMore={movements.hasMore}
+        initialBalance={session.initial_balance}
+        openedAt={session.start_time}
+        total={balance.current}
+        failed={!movementsResult.success}
+      />
 
       <CloseCashButton sessionId={session.id} />
     </div>

@@ -350,7 +350,10 @@ describe("getCashMovementsAction", () => {
 
     const result = await getCashMovementsAction("cs1");
 
-    expect(result).toEqual({ success: true, data: [TRANSACTION] });
+    expect(result).toEqual({
+      success: true,
+      data: { movements: [TRANSACTION], hasMore: false },
+    });
     expect(tables).toEqual(["transactions"]);
     expect(builders[0].eq).toHaveBeenCalledWith("cash_session_id", "cs1");
     expect(builders[0].order).toHaveBeenCalledWith("created_at", {
@@ -363,7 +366,34 @@ describe("getCashMovementsAction", () => {
 
     await getCashMovementsAction("cs1");
 
-    expect(builders[0].limit).toHaveBeenCalledWith(8);
+    // Pide uno de más (9) para saber si hay más de los 8 que se muestran.
+    expect(builders[0].limit).toHaveBeenCalledWith(9);
+  });
+
+  it("avisa si hay movimientos más viejos que no entraron", async () => {
+    const nueve = Array.from({ length: 9 }, (_, i) => ({
+      ...TRANSACTION,
+      id: `t${i}`,
+    }));
+    mockSupabase([{ data: nueve, error: null }]);
+
+    const result = await getCashMovementsAction("cs1");
+
+    expect(result.success && result.data.movements).toHaveLength(8);
+    expect(result.success && result.data.hasMore).toBe(true);
+  });
+
+  it("con 8 o menos, no hay más", async () => {
+    const ocho = Array.from({ length: 8 }, (_, i) => ({
+      ...TRANSACTION,
+      id: `t${i}`,
+    }));
+    mockSupabase([{ data: ocho, error: null }]);
+
+    const result = await getCashMovementsAction("cs1");
+
+    expect(result.success && result.data.movements).toHaveLength(8);
+    expect(result.success && result.data.hasMore).toBe(false);
   });
 
   it("devuelve una lista vacía cuando la caja no tiene movimientos", async () => {
@@ -371,7 +401,10 @@ describe("getCashMovementsAction", () => {
 
     const result = await getCashMovementsAction("cs1");
 
-    expect(result).toEqual({ success: true, data: [] });
+    expect(result).toEqual({
+      success: true,
+      data: { movements: [], hasMore: false },
+    });
   });
 
   it("devuelve un error legible si supabase falla", async () => {

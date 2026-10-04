@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getTeamAction } from "@/actions/team.actions";
+import { getTeamAction, getTeamEmailsAction } from "@/actions/team.actions";
 import { TeamList } from "./_components/TeamList";
 
 export default async function EquipoPage() {
@@ -22,5 +22,8 @@ export default async function EquipoPage() {
     (member) => member.auth_id === user?.id && member.role === "owner",
   );
 
-  return <TeamList team={result.data} isOwner={isOwner} />;
+  // Los mails sólo los ve el dueño; la acción igual lo vuelve a validar.
+  const emails = isOwner ? await getTeamEmailsAction() : {};
+
+  return <TeamList team={result.data} isOwner={isOwner} emails={emails} />;
 }

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { loginAction } from "@/actions/auth.actions";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { AuthShell } from "../_components/AuthShell";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -31,12 +32,18 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
-      <h1 className="text-xl font-semibold">Iniciar sesión</h1>
-      <form
-        onSubmit={handleSubmit}
-        className="flex w-full max-w-sm flex-col gap-4"
-      >
+    <AuthShell
+      title="Iniciar sesión"
+      footer={
+        <>
+          ¿No tenés cuenta?{" "}
+          <Link href="/registro" className="text-foreground underline">
+            Registrá tu barbería
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Input
           id="email"
           label="Email"
@@ -69,13 +76,6 @@ export default function LoginPage() {
           {isLoading ? "Ingresando..." : "Ingresar"}
         </Button>
       </form>
-
-      <p className="text-sm">
-        ¿No tenés cuenta?{" "}
-        <Link href="/registro" className="underline">
-          Registrate
-        </Link>
-      </p>
-    </main>
+    </AuthShell>
   );
 }

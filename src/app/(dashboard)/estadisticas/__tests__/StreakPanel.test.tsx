@@ -37,3 +37,10 @@ describe("StreakPanel — la racha en /estadisticas", () => {
     expect(screen.getByText("Acero")).not.toHaveAttribute("aria-current");
   });
 });
+
+describe("StreakPanel — tema Recibo", () => {
+  it("el número de días va en tinta de sello", () => {
+    render(<StreakPanel count={13} status="activa" />);
+    expect(screen.getByText("13")).toHaveClass("text-stamp");
+  });
+});

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { businessDateOf, businessRangeUtc, shiftDateISO } from "@/lib/dates";
+import { summarizeCash, type CashSummary } from "@/lib/cash-summary";
 import { LEVEL_WINDOW_DAYS, levelForCuts } from "@/lib/levels";
 import { nextStreakCount } from "@/lib/streaks";
 import {
@@ -33,6 +34,14 @@ export interface CloseCashResult {
   session: CashSession;
   /** null si la racha no se tocó (caja sin cobros) o no se pudo guardar. */
   streak: StreakChange | null;
+  /**
+   * Lo que se imprime en el ticket del cierre (spec 10). Lo arma el servidor
+   * con las mismas filas del saldo: `summary.finalBalance` es siempre igual a
+   * `session.final_balance`. El cliente sólo lo dibuja.
+   */
+  summary: CashSummary;
+  /** Nombre del barbero para el ticket; null si no se pudo leer. */
+  barberName: string | null;
 }
 
 const MENSAJE_ERROR_GENERICO = "Algo salió mal. Intentá de nuevo.";
@@ -85,38 +94,37 @@ export interface CashBalance {
 }
 
 /**
- * Saldo de una caja = inicial + ingresos − egresos, calculado siempre en el
- * servidor (regla 1 de CLAUDE.md). Lo usan tanto la pantalla de caja como el
- * cierre, así lo que el barbero ve y lo que queda guardado nunca difieren.
- * RLS (`transactions_select_own`) ya limita a las transacciones de cajas
+ * Resumen de una caja (cortes, ventas, manuales, egresos y saldo), calculado
+ * siempre en el servidor (regla 1 de CLAUDE.md) con `summarizeCash`. Lo usan
+ * la pantalla de caja, el cierre y el ticket, así lo que el barbero ve, lo
+ * que queda guardado y lo que se imprime nunca difieren. RLS
+ * (`transactions_select_own`) ya limita a las transacciones de cajas
  * propias. Devuelve null si falla la consulta.
  */
-async function computeBalance(
+async function computeSummary(
   supabase: SupabaseServerClient,
   sessionId: string,
   initialBalance: number,
-): Promise<CashBalance | null> {
+): Promise<CashSummary | null> {
   const { data, error } = await supabase
     .from("transactions")
-    .select("type, amount")
+    .select("type, amount, category")
     .eq("cash_session_id", sessionId);
 
   if (error) {
-    console.error("computeBalance:", error.message);
+    console.error("computeSummary:", error.message);
     return null;
   }
 
-  let income = 0;
-  let expense = 0;
-  for (const row of (data ?? []) as { type: string; amount: number }[]) {
-    if (row.type === "income") income += Number(row.amount);
-    else if (row.type === "expense") expense += Number(row.amount);
-  }
+  return summarizeCash(initialBalance, data ?? []);
+}
 
+/** Saldo = inicial + ingresos − egresos, a partir del resumen. */
+function balanceOf(summary: CashSummary): CashBalance {
   return {
-    income,
-    expense,
-    current: Number(initialBalance) + income - expense,
+    income: summary.income,
+    expense: summary.expenses,
+    current: summary.finalBalance,
   };
 }
 
@@ -137,7 +145,7 @@ async function computeBalance(
  * No devuelve error: si algo falla acá, la caja ya quedó cerrada y correcta.
  * Se loguea y se sigue — perder un punto de racha no justifica hacerle creer
  * al barbero que el cierre no se guardó. Devuelve de cuánto a cuánto pasó la
- * racha (para la hoja del poste en /caja), o null si no se tocó o falló.
+ * racha (para el sello del ticket del cierre), o null si no se tocó o falló.
  */
 async function updateStreakAndLevel(
   supabase: SupabaseServerClient,
@@ -232,7 +240,7 @@ async function updateStreakAndLevel(
   );
 
   const saved = await applyStreakAndLevel(profile.id, streak, level);
-  // Si no se guardó, no se festeja: la hoja del poste mostraría un número
+  // Si no se guardó, no hay sello: el ticket mostraría un número
   // que la base no tiene.
   if (!saved) return null;
 
@@ -314,21 +322,32 @@ export async function getCashBalanceAction(
     return { success: false, error: MENSAJE_NO_ENCONTRADA };
   }
 
-  const balance = await computeBalance(
+  const summary = await computeSummary(
     supabase,
     sessionId,
     session.initial_balance,
   );
 
-  if (!balance) {
+  if (!summary) {
     return { success: false, error: MENSAJE_ERROR_GENERICO };
   }
 
-  return { success: true, data: balance };
+  return { success: true, data: balanceOf(summary) };
 }
 
 /** Cuántos movimientos entran en la lista de la pantalla de caja. */
 const MOVIMIENTOS_VISIBLES = 8;
+
+export interface CashMovements {
+  /** Del más nuevo al más viejo, como mucho `MOVIMIENTOS_VISIBLES`. */
+  movements: Transaction[];
+  /**
+   * Hay movimientos más viejos que no entraron. El ticket de /caja lo
+   * necesita para no imprimir "Saldo inicial" justo arriba de una lista
+   * recortada, que se leería como si no faltara nada.
+   */
+  hasMore: boolean;
+}
 
 /**
  * Últimos movimientos de una caja propia, del más nuevo al más viejo. Es
@@ -345,7 +364,7 @@ const MOVIMIENTOS_VISIBLES = 8;
  */
 export async function getCashMovementsAction(
   sessionId: string,
-): Promise<CashActionResult<Transaction[]>> {
+): Promise<CashActionResult<CashMovements>> {
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -355,14 +374,22 @@ export async function getCashMovementsAction(
     )
     .eq("cash_session_id", sessionId)
     .order("created_at", { ascending: false })
-    .limit(MOVIMIENTOS_VISIBLES);
+    // Uno de más, para saber si hay más sin contar toda la caja.
+    .limit(MOVIMIENTOS_VISIBLES + 1);
 
   if (error) {
     console.error("getCashMovementsAction:", error.message);
     return { success: false, error: MENSAJE_ERROR_GENERICO };
   }
 
-  return { success: true, data: (data ?? []) as Transaction[] };
+  const rows = (data ?? []) as Transaction[];
+  return {
+    success: true,
+    data: {
+      movements: rows.slice(0, MOVIMIENTOS_VISIBLES),
+      hasMore: rows.length > MOVIMIENTOS_VISIBLES,
+    },
+  };
 }
 
 /**
@@ -437,7 +464,7 @@ export async function openCashSessionAction(
 
 /**
  * Cierra una caja guardando como `final_balance` el saldo real (inicial +
- * ingresos − egresos, ver `computeBalance`). Si no se pueden leer las
+ * ingresos − egresos, ver `computeSummary`). Si no se pueden leer las
  * transacciones, no se cierra: mejor un error que un cierre con un saldo
  * equivocado. `end_time` se
  * calcula acá, en el servidor: nunca hay que confiar en un timestamp
@@ -470,13 +497,13 @@ export async function closeCashSessionAction(
     return { success: false, error: MENSAJE_NO_ENCONTRADA };
   }
 
-  const balance = await computeBalance(
+  const summary = await computeSummary(
     supabase,
     sessionId,
     session.initial_balance,
   );
 
-  if (!balance) {
+  if (!summary) {
     return { success: false, error: MENSAJE_ERROR_GENERICO };
   }
 
@@ -485,7 +512,7 @@ export async function closeCashSessionAction(
     .update({
       status: "closed",
       end_time: new Date().toISOString(),
-      final_balance: balance.current,
+      final_balance: summary.finalBalance,
     })
     .eq("id", sessionId)
     .eq("status", "open")
@@ -505,12 +532,40 @@ export async function closeCashSessionAction(
 
   // Gamificación después del cierre, nunca antes: si la racha fallara, la
   // caja ya está cerrada con su saldo correcto.
-  const streak = await updateStreakAndLevel(supabase, closed, balance.income);
+  const [streak, barberName] = await Promise.all([
+    updateStreakAndLevel(supabase, closed, summary.income),
+    readBarberName(supabase, closed.user_id),
+  ]);
 
   revalidatePath("/caja");
   revalidatePath("/inicio");
   revalidatePath("/estadisticas");
-  return { success: true, data: { session: closed, streak } };
+  return {
+    success: true,
+    data: { session: closed, streak, summary, barberName },
+  };
+}
+
+/**
+ * Nombre del barbero para el ticket del cierre. Si falla, el ticket sale sin
+ * el renglón "Barbero": un nombre que no se pudo leer no tumba un cierre.
+ */
+async function readBarberName(
+  supabase: SupabaseServerClient,
+  userId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("users")
+    .select("name")
+    .eq("id", userId)
+    .maybeSingle<{ name: string | null }>();
+
+  if (error) {
+    console.error("readBarberName:", error.message);
+    return null;
+  }
+  const name = data?.name?.trim();
+  return name ? name : null;
 }
 
 /**
@@ -574,7 +629,7 @@ function validateManualTransaction(
 
 /**
  * Registra un ingreso o egreso manual (ej. comprar café, una propina) en la
- * caja abierta del usuario. Entra solo en el saldo porque `computeBalance`
+ * caja abierta del usuario. Entra solo en el saldo porque `computeSummary`
  * ya suma todas las `transactions` de la caja.
  *
  * Va con `category: "manual"` (spec 09, paso 3): una propina no es un corte,

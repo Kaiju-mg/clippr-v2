@@ -89,7 +89,7 @@ los tokens, los componentes ya los usan.*
 
 *Los elementos que le dan la identidad.*
 
-- [ ] **`<Stamp />`** (`src/components/ui/Stamp.tsx`): texto en mayúsculas,
+- [x] **`<Stamp />`** (`src/components/ui/Stamp.tsx`): texto en mayúsculas,
   `--stamp`, borde de 1.5–2.5px, rotación de −6° a −9°, tamaños `sm`
   (dentro de una fila) y `md`. Animación de "golpe" (escala 2.6 → 0.92 → 1,
   ~0.5s) **sólo al aparecer**, no en cada render. Textos que usa la app:
@@ -102,23 +102,23 @@ los tokens, los componentes ya los usan.*
     `StreakPanel` de `/estadisticas` del barbero, en color `--stamp`.
   - No hay sello "PAGADO" ni "CERRADO".
   - En `/inicio` no hay sello: "Lo que viene" sólo lista turnos pendientes.
-- [ ] **`<TicketReceipt />`** (`src/components/ticket/`): sólo de
+- [x] **`<TicketReceipt />`** (`src/components/ticket/`): sólo de
   presentación. Recibe renglones ya calculados, dibuja el papel (`--paper`,
   `--paper-ink`, Courier Prime 11.5px), separadores `--paper-rule`
   punteados, borde inferior en zigzag (gradientes CSS, sin imágenes) y
   ancho máximo ~250px. Lo reusan el cierre, la imagen para compartir y la
   Fase 4.
-- [ ] **Movimientos de `/caja` como ticket:** la lista va sobre una tarjeta
+- [x] **Movimientos de `/caja` como ticket:** la lista va sobre una tarjeta
   `--surface-2` con borde inferior en zigzag, filas punteadas (hora `font-mono`
   en `--muted`, concepto, monto), y cierra con un renglón **TOTAL** igual al
   saldo actual (mismo `computeBalance` que hoy, sin cálculo nuevo en el
   cliente).
-- [ ] **Resumen del cierre calculado en el servidor** (regla 1 de
+- [x] **Resumen del cierre calculado en el servidor** (regla 1 de
   CLAUDE.md): `closeCashSessionAction` hoy devuelve `{ session, streak }`;
   suma `summary`: saldo inicial, cortes (cantidad y total, `category =
   'service'`), ventas (cantidad y total, `'product'`), ingresos manuales,
   egresos y saldo final. El cliente sólo lo dibuja.
-- [ ] **Animación de cierre** (reemplaza la hoja que sube desde abajo de
+- [x] **Animación de cierre** (reemplaza la hoja que sube desde abajo de
   `StreakCelebration`; el store `streakCelebrationStore` se reusa para
   dispararla):
   1. El fondo se oscurece (`rgba(18,16,13,.76)`, fade de ~0.45s).
@@ -130,10 +130,12 @@ los tokens, los componentes ya los usan.*
      poste chico de un solo color (rayas en `--stamp`) + "**N** DÍAS DE
      RACHA". Debajo, "Mañana va el N+1." si la racha está viva.
   4. Aparecen "Compartir" (contorno color papel) y "Listo" (relleno papel),
-     legibles sobre el fondo oscuro.
+     legibles sobre el fondo oscuro. *(Implementado: "Listo". "Compartir"
+     se suma con la pantalla de compartir de la fase 3; ver
+     `docs/decisiones.md` 2026-10-03.)*
   - Si la racha no se pudo guardar (falta `SUPABASE_SERVICE_ROLE_KEY`, ver
     spec 09), el ticket sale igual, sin sello.
-- [ ] **Resto de las pantallas del muestrario:**
+- [x] **Resto de las pantallas del muestrario:**
   - `/agenda`: "Cancelar" y "Cobrar" en un segundo renglón de la fila;
     cancelados tachados y atenuados.
   - `/estadisticas` barbero: número de racha en `--stamp`, barra de nivel

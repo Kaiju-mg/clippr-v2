@@ -194,3 +194,30 @@ const dateTimeFormatter = new Intl.DateTimeFormat("es-PY", {
 export function formatBusinessDateTime(instantISO: string): string {
   return dateTimeFormatter.format(new Date(instantISO));
 }
+
+const ticketFormatter = new Intl.DateTimeFormat("es-PY", {
+  weekday: "short",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+  timeZone: BUSINESS_TIMEZONE,
+});
+
+/**
+ * "Sáb 03/10/2026 · 21:05" — el renglón de fecha del ticket (spec 10). Se
+ * arma por partes para no depender de la puntuación que elija `Intl`
+ * ("sáb." o "sáb", coma antes de la hora).
+ */
+export function formatTicketDateTime(instantISO: string): string {
+  const parts = Object.fromEntries(
+    ticketFormatter
+      .formatToParts(new Date(instantISO))
+      .map((part) => [part.type, part.value]),
+  );
+  const weekday = (parts.weekday ?? "").replace(".", "");
+  const dia = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+  return `${dia} ${parts.day}/${parts.month}/${parts.year} · ${parts.hour}:${parts.minute}`;
+}

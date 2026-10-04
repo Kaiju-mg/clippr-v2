@@ -60,13 +60,15 @@ src/app/                 rutas (App Router)
                           agenda, servicios, productos, equipo, mas,
                           estadisticas
 src/components/          ui/ (BottomNav, Tile — el cubo bento, ThemeSwitch, Input/Select,
-                          BarberPole) · forms/ · timers/ · streak/ (hoja del poste)
+                          BarberPole, Stamp, PerforatedBar) · forms/ · timers/ ·
+                          ticket/ (TicketReceipt y el ticket del cierre)
 src/lib/supabase/        client.ts (browser)  ·  server.ts (Server Components/Actions/Route Handlers)
-src/lib/utils.ts         formatGuaranies, cn
+src/lib/utils.ts         formatGuaranies, formatAmount, cn
+src/lib/cash-summary.ts  resumen de una caja (saldo, ticket del cierre) — pura, la usa el servidor
 src/lib/dates.ts         fechas del negocio en America/Asuncion — usar siempre esto, nunca new Date() pelado para "qué día es" ni un Intl.DateTimeFormat propio para mostrar una fecha
 src/lib/theme.ts         cookie del tema claro/oscuro (la lee el layout raíz)
 src/actions/             Server Actions — toda mutación sensible va acá
-src/store/               Zustand (timerStore, streakCelebrationStore)
+src/store/               Zustand (timerStore, closeCelebrationStore)
 src/types/index.ts       tipos del modelo de datos
 ```
 
@@ -366,7 +368,23 @@ temas), build y capturas a 360 px en los dos temas con Chromium headless.
 Recorrido con sesión de dueño en el navegador (360 px, claro y oscuro):
 `/inicio`, `/agenda`, `/estadisticas`, `/servicios`, `/productos`, sin
 desbordes ni errores de consola. Movimientos de `/caja` y barra de nivel
-del barbero sólo vistos con datos falsos. **Pendiente:** fases 2 a 5. Ver
+del barbero sólo vistos con datos falsos.
+
+**Fase 2 implementada** (2026-10-03, sin migraciones): `<Stamp />` (COBRADO,
+AGOTADO, MEJOR DEL MES, la racha), `<TicketReceipt />` con Courier Prime
+cargada sólo cuando hay ticket, movimientos de `/caja` como ticket con TOTAL
+= saldo del servidor, `summary` del cierre calculado en el servidor
+(`src/lib/cash-summary.ts`, la misma función que el saldo) y la animación
+de impresión del cierre (`CloseTicket`, reemplaza a `StreakCelebration`).
+Además: `/agenda` con sello y píldoras, `/equipo` con "Nivel · mail" (el
+mail sólo lo ve el dueño), tarjeta de la barbería en `/mas` y login/registro
+con poste y tarjeta de papel. "Compartir" en el cierre llega con la fase 3.
+Verificado: lint, typecheck, 402 tests, build y recorrido a 360 px en los
+dos temas (pantallas reales con sesión de dueño; ticket y animación con una
+página temporal). El 2026-10-04 se probó en el navegador contra la base
+real: dos cierres del mismo día (ticket, sello de racha 1 → 2 sólo en el
+primero, TOTAL = `final_balance`, `category` de cada cobro) y la vista del
+barbero de `/estadisticas`. **Pendiente:** las fases 3 a 5. Ver
 `docs/arquitectura.md` sección "Tema Recibo".
 
 El resto (nada pendiente del backlog) sigue como estaba.

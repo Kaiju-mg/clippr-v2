@@ -111,7 +111,7 @@ function mockCierre(escenario: Escenario = {}) {
       onfulfilled,
     );
 
-  // transactions: (1) computeBalance de la caja que se cierra, (2) ingresos
+  // transactions: (1) computeSummary de la caja que se cierra, (2) ingresos
   // de las cajas anteriores.
   let transactionsCall = 0;
   const transactions = createBuilder();
@@ -333,7 +333,7 @@ describe("closeCashSessionAction — la gamificación no puede tumbar el cierre"
 
     const result = await closeCashSessionAction("cs-hoy");
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       success: true,
       data: { session: CERRADA, streak: null },
     });
@@ -346,7 +346,7 @@ describe("closeCashSessionAction — la gamificación no puede tumbar el cierre"
 
     const result = await closeCashSessionAction("cs-hoy");
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       success: true,
       data: { session: CERRADA, streak: null },
     });
@@ -354,7 +354,7 @@ describe("closeCashSessionAction — la gamificación no puede tumbar el cierre"
   });
 });
 
-describe("closeCashSessionAction — racha devuelta para la hoja del poste", () => {
+describe("closeCashSessionAction — racha devuelta para el sello del ticket", () => {
   it("devuelve de cuánto a cuánto subió la racha", async () => {
     mockCierre({
       streak: 5,

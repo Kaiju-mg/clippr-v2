@@ -389,6 +389,80 @@ describe("closeCashSessionAction", () => {
     expect(result.success && result.data.session).toEqual(closed);
   });
 
+  it("devuelve el resumen del ticket, armado en el servidor con las mismas filas", async () => {
+    const closed = {
+      ...CASH_SESSION,
+      status: "closed" as const,
+      end_time: "2026-09-15T18:00:00.000Z",
+      final_balance: 135000,
+    };
+    const builder = createBuilder<unknown>({ data: CASH_SESSION, error: null });
+    builder.maybeSingle = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: { initial_balance: 50000, status: "open" },
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: closed, error: null });
+    const transactions = createBuilder<unknown>({
+      data: [
+        { type: "income", category: "service", amount: 45000 },
+        { type: "income", category: "service", amount: 45000 },
+        { type: "income", category: "product", amount: 20000 },
+        { type: "income", category: "manual", amount: 5000 },
+        { type: "expense", category: "manual", amount: 30000 },
+      ],
+      error: null,
+    });
+    const { usersBuilder } = mockSupabase(builder, transactions);
+    // Primera lectura de `users`: el perfil de la racha; la del nombre la
+    // resuelve el mismo builder.
+    usersBuilder.maybeSingle = vi.fn(async () => ({
+      data: { ...PROFILE, name: "Eduardo Villalba" },
+      error: null,
+    }));
+
+    const result = await closeCashSessionAction("cs1");
+
+    expect(transactions.select).toHaveBeenCalledWith("type, amount, category");
+    expect(result.success && result.data.summary).toEqual({
+      initialBalance: 50000,
+      cuts: { count: 2, total: 90000 },
+      sales: { count: 1, total: 20000 },
+      manualIncome: 5000,
+      expenses: 30000,
+      income: 115000,
+      finalBalance: 135000,
+    });
+    // El TOTAL del ticket es el mismo número que se guarda en la caja.
+    expect(builder.update).toHaveBeenCalledWith(
+      expect.objectContaining({ final_balance: 135000 }),
+    );
+    expect(result.success && result.data.barberName).toBe("Eduardo Villalba");
+  });
+
+  it("si no puede leer el nombre, cierra igual y el ticket sale sin barbero", async () => {
+    const closed = { ...CASH_SESSION, status: "closed" as const };
+    const builder = createBuilder<unknown>({ data: CASH_SESSION, error: null });
+    builder.maybeSingle = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: { initial_balance: 50000, status: "open" },
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: closed, error: null });
+    const { usersBuilder } = mockSupabase(builder);
+    usersBuilder.maybeSingle = vi.fn(async () => ({
+      data: null,
+      error: { message: "boom" },
+    }));
+
+    const result = await closeCashSessionAction("cs1");
+
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.barberName).toBeNull();
+  });
+
   it("no cierra la caja si no puede leer las transacciones", async () => {
     const builder = createBuilder<unknown>({
       data: { initial_balance: 50000, status: "open" },

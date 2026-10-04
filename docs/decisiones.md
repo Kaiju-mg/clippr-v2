@@ -1438,3 +1438,78 @@ Por qué: los números en columna se comparan de un vistazo, y es lo que
 dice "ticket" sin dibujar ningún ticket.
 Costo: una fuente más en todas las pantallas (dos pesos, sólo latin). La
 de la Fase 2 (Courier Prime) va a cargarse sólo en el ticket.
+
+## 2026-10-03 — El ticket del cierre sale siempre y lo arma el servidor
+Elegido (spec 10, fase 2): al cerrar la caja se imprime un ticket con el
+resumen del día en **todo** cierre exitoso, no sólo cuando sube la racha. El
+resumen (`summary`) lo calcula `closeCashSessionAction` con `summarizeCash`,
+la misma función que da el saldo de `/caja` y el `final_balance`. El sello
+de la racha va sólo si la racha se guardó.
+Descartado: mostrarlo sólo cuando sube la racha (como la hoja del poste que
+reemplaza), y armar el resumen en el cliente sumando los movimientos.
+Por qué: el ticket es el resumen del día, que sirve aunque la racha no haya
+cambiado (segunda caja del día, o sin la clave de servicio). Calcularlo en
+el servidor es la regla 1 de CLAUDE.md, y sacarlo de la misma función que
+el saldo hace imposible que el TOTAL impreso difiera del guardado.
+Costo: `computeBalance` pasó a `computeSummary` y lee también `category`;
+`closeCashSessionAction` hace una consulta más (el nombre del barbero, que
+si falla no tumba el cierre). "Compartir" no está todavía: un botón que no
+lleva a ningún lado es peor que ninguno, y la pantalla de compartir es de
+la fase 3.
+
+## 2026-10-03 — El sello cae sólo sobre lo que acaba de pasar
+Elegido: `<Stamp />` decide si anima **una sola vez, al montar**. En
+`/agenda`, la fila recuerda con qué estado se cargó: si venía cobrada, el
+sello aparece quieto; si se cobra en pantalla, cae.
+Descartado: animar en cada render, y animar todos los sellos al cargar la
+pantalla.
+Por qué: la spec pide el golpe "sólo al aparecer". Siete sellos cayendo a la
+vez al abrir la agenda no comunican nada: el golpe tiene sentido para lo que
+el barbero acaba de hacer.
+Costo: la fila guarda su estado inicial en un `useState`; si una fila
+cobrada se desmonta y vuelve a montar (otro día y volver), su sello aparece
+quieto, que es lo correcto.
+
+## 2026-10-03 — El mail del equipo, sólo para el dueño
+Elegido: `/equipo` muestra "Nivel · mail" (spec 10) leyendo el mail de
+`auth.users` con la clave de servicio (`getTeamEmailsAction`), **sólo si
+quien mira es el dueño**. La acción no recibe argumentos: lee el equipo
+con RLS y valida el rol ella misma.
+Descartado: agregar una columna `email` a `public.users` (duplicaría el
+dato y obligaría a mantenerlo sincronizado), y mostrarle los mails a
+cualquier miembro.
+Por qué: el email ya existe en Auth y el dueño es quien da de alta a los
+barberos con ese mail. Un barbero no necesita los mails de sus compañeros.
+Un Server Action se puede llamar con cualquier argumento, por eso no
+acepta una lista de usuarios desde el cliente.
+Costo: una llamada a Auth por miembro cada vez que el dueño abre `/equipo`
+(equipos chicos). Sin `SUPABASE_SERVICE_ROLE_KEY`, el subtítulo muestra
+sólo el nivel.
+
+## 2026-10-03 — En la agenda, "Cobrar" deja de ser un botón relleno
+Elegido: "Cancelar" (texto gris) y "Cobrar" (píldora con borde) chicos, en
+el segundo renglón de la fila, como el muestrario. "Cancelar" deja de ir en
+rojo.
+Descartado: mantener "Cobrar" relleno y "Cancelar" en `text-danger`.
+Por qué: con varios turnos, un botón relleno por fila rompe la regla de un
+solo elemento gritón por pantalla. Y el rojo es sólo del sello y de los
+errores (regla 2 de la spec 10); cancelar un turno no es ninguna de las dos.
+Costo: "Cobrar" pesa menos visualmente; la acción sigue en el mismo lugar.
+Por la misma regla, en el ticket de `/caja` los egresos van en tinta normal
+y no en `--danger`.
+
+
+## 2026-10-04 — "Caja cerrada" en /inicio es un cubo, no un sello ni un error
+Elegido: sin caja abierta, `/inicio` muestra un cubo monocromo que es un
+link a `/caja` (ícono de billetera, "Tu caja está cerrada", "Abrila para
+poder cobrar los cortes." y "Abrir ›" en `--accent-ink`). Reemplaza al
+párrafo en `text-danger` con `role="alert"`.
+Descartado: dejarlo como texto rojo, y hacerlo un `<Stamp />` (lo propuso
+el usuario para que fuera más vistoso).
+Por qué: la caja cerrada no es un error (empezar un corte no la necesita,
+regla 4 de CLAUDE.md), y el sello es sólo para algo que ya pasó (regla 2 de
+la spec 10, que además dice "en `/inicio` no hay sello"). Un cubo se ve igual
+de claro, y además lleva a donde se resuelve.
+Costo: suma un cubo arriba de "Iniciar corte" mientras la caja está cerrada.
+El bloqueo al cobrar sin caja (`SinCajaAviso`, en el formulario de cierre)
+sigue en `text-danger`, porque ahí sí es un intento de cobro rechazado.

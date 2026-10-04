@@ -3,7 +3,7 @@
 import { useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Button } from "@/components/ui/Button";
+import { Stamp } from "@/components/ui/Stamp";
 import {
   completeScheduledAppointmentAction,
   cancelAppointmentAction,
@@ -24,11 +24,14 @@ interface AppointmentRowProps {
   esDiaFuturo: boolean;
 }
 
-const STATUS_LABELS: Partial<Record<AppointmentStatus, string>> = {
-  completed: "Cobrado",
-  cancelled: "Cancelado",
-  walkin: "Cobrado",
-};
+/** Un walk-in ya entra cobrado, igual que un turno completado. */
+function estaCobrado(status: AppointmentStatus): boolean {
+  return status === "completed" || status === "walkin";
+}
+
+/** Píldora chica del segundo renglón (muestrario "Clippr en papel"). */
+const PILL =
+  "rounded-full px-3 py-1.5 text-xs font-semibold transition-transform duration-100 active:scale-95 disabled:opacity-50 disabled:active:scale-100";
 
 /**
  * Fila de un turno en la agenda (spec 06). `useOptimistic` marca el
@@ -42,6 +45,11 @@ const STATUS_LABELS: Partial<Record<AppointmentStatus, string>> = {
  * segundos antes de que la fila volviera atrás sola (visto en el navegador
  * el 2026-09-16). Se saca el botón en vez de sólo deshabilitarlo — un botón
  * gris sin explicación es peor que ninguno; la leyenda dice por qué.
+ *
+ * Tema Recibo (spec 10): lo cobrado lleva el sello COBRADO y la fila se
+ * atenúa (el sello no); lo cancelado va tachado y atenuado, sin sello. El
+ * sello cae sólo si el turno se cobra mientras se mira la pantalla: los que
+ * ya venían cobrados al cargar aparecen sellados, quietos.
  */
 export function AppointmentRow({
   appointment,
@@ -57,6 +65,8 @@ export function AppointmentRow({
     appointment.status,
     (_current: AppointmentStatus, next: AppointmentStatus) => next,
   );
+  // El estado con el que se montó la fila: decide si el sello cae o no.
+  const [statusAlCargar] = useState(appointment.status);
 
   function handleComplete() {
     if (!cashSessionId) return;
@@ -89,61 +99,68 @@ export function AppointmentRow({
   }
 
   const isScheduled = optimisticStatus === "scheduled";
+  const cobrado = estaCobrado(optimisticStatus);
+  const cancelado = optimisticStatus === "cancelled";
+  const atenuado = cobrado || cancelado ? "opacity-45" : "";
 
   return (
-    <div className="flex flex-col gap-2 py-3.5">
-      <div className="flex items-center justify-between gap-3">
-        <div
-          className={`flex min-w-0 flex-col gap-1 ${isScheduled ? "" : "opacity-40"}`}
+    <div className="flex flex-col gap-1.5 py-3">
+      <div className="flex items-center gap-3">
+        <span
+          className={`w-11 flex-none font-mono text-[13.5px] font-medium tabular-nums ${atenuado}`}
         >
-          <span className="font-display truncate text-[17px] font-semibold">
+          {formatBusinessTime(appointment.start_time)}
+        </span>
+        <div className={`flex min-w-0 flex-1 flex-col ${atenuado}`}>
+          <span
+            className={`truncate text-[15px] font-semibold ${
+              cancelado ? "decoration-muted line-through" : ""
+            }`}
+          >
             {appointment.client_name ?? "Sin nombre"}
           </span>
-          <span className="text-muted text-[13px]">
-            <span className="font-mono tabular-nums">
-              {formatBusinessTime(appointment.start_time)}
-            </span>{" "}
-            · {serviceName}
-          </span>
+          <span className="text-muted truncate text-xs">{serviceName}</span>
         </div>
-        <span
-          className={`text-accent-ink font-mono text-[15px] font-semibold whitespace-nowrap tabular-nums ${
-            isScheduled ? "" : "opacity-40"
-          }`}
-        >
-          {formatGuaranies(servicePrice)}
-        </span>
+        <div className="flex flex-none flex-col items-end gap-1">
+          <span
+            className={`font-mono text-[13.5px] font-semibold whitespace-nowrap tabular-nums ${
+              cancelado ? "" : "text-accent-ink"
+            } ${atenuado}`}
+          >
+            {formatGuaranies(servicePrice)}
+          </span>
+          {cobrado && (
+            <Stamp animate={statusAlCargar === "scheduled"}>Cobrado</Stamp>
+          )}
+          {cancelado && <span className="text-muted text-xs">Cancelado</span>}
+        </div>
       </div>
 
-      {isScheduled ? (
-        <div className="flex items-center justify-end gap-2">
-          <Button
+      {isScheduled && (
+        <div className="flex items-center justify-end gap-1">
+          <button
             type="button"
-            variant="ghost"
-            className="text-danger"
             onClick={handleCancel}
             disabled={isPending}
+            className={`${PILL} text-muted`}
           >
             Cancelar
-          </Button>
+          </button>
           {esDiaFuturo ? (
-            <span className="text-muted text-[13px]">
+            <span className="text-muted text-xs">
               Se cobra el día del turno
             </span>
           ) : (
-            <Button
+            <button
               type="button"
               onClick={handleComplete}
               disabled={isPending || !cashSessionId}
+              className={`${PILL} border-line bg-background text-foreground border`}
             >
               Cobrar
-            </Button>
+            </button>
           )}
         </div>
-      ) : (
-        <span className="text-muted text-right text-[13px]">
-          {STATUS_LABELS[optimisticStatus] ?? optimisticStatus}
-        </span>
       )}
 
       {isScheduled && !esDiaFuturo && !cashSessionId && (

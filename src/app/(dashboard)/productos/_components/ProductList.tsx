@@ -3,6 +3,7 @@
 import { useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import { Stamp } from "@/components/ui/Stamp";
 import { Switch } from "@/components/ui/Switch";
 import { ProductInlineForm } from "./ProductInlineForm";
 import { toggleProductStatusAction } from "@/actions/product.actions";
@@ -132,16 +133,21 @@ export function ProductList({ products, isOwner }: ProductListProps) {
                     <span className="font-display truncate text-[17px] font-semibold">
                       {product.name}
                     </span>
-                    <span
-                      className={`text-[13px] tabular-nums ${
-                        lowStock ? "text-danger" : "text-muted"
-                      }`}
-                    >
-                      {product.stock === 0
-                        ? "Sin stock"
-                        : `Stock: ${product.stock}`}
-                      {lowStock && product.stock > 0 ? " · Stock bajo" : ""}
-                    </span>
+                    {/* Agotado es algo que ya pasó: sello (spec 10). */}
+                    {product.stock === 0 ? (
+                      <span className="pt-0.5">
+                        <Stamp>Agotado</Stamp>
+                      </span>
+                    ) : (
+                      <span
+                        className={`text-[13px] tabular-nums ${
+                          lowStock ? "text-danger" : "text-muted"
+                        }`}
+                      >
+                        {`Stock: ${product.stock}`}
+                        {lowStock ? " · Stock bajo" : ""}
+                      </span>
+                    )}
                   </div>
                   <span
                     className={`text-accent-ink font-mono text-[15px] font-semibold whitespace-nowrap tabular-nums ${

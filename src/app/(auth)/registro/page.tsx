@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { registerOwnerAction } from "@/actions/auth.actions";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { AuthShell } from "../_components/AuthShell";
 
 export default function RegistroPage() {
   const router = useRouter();
@@ -38,12 +39,18 @@ export default function RegistroPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
-      <h1 className="text-xl font-semibold">Crear cuenta</h1>
-      <form
-        onSubmit={handleSubmit}
-        className="flex w-full max-w-sm flex-col gap-4"
-      >
+    <AuthShell
+      title="Crear cuenta"
+      footer={
+        <>
+          ¿Ya tenés cuenta?{" "}
+          <Link href="/login" className="text-foreground underline">
+            Iniciá sesión
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Input
           id="barbershopName"
           label="Nombre de la barbería"
@@ -96,13 +103,6 @@ export default function RegistroPage() {
           {isLoading ? "Creando cuenta..." : "Crear cuenta"}
         </Button>
       </form>
-
-      <p className="text-sm">
-        ¿Ya tenés cuenta?{" "}
-        <Link href="/login" className="underline">
-          Iniciá sesión
-        </Link>
-      </p>
-    </main>
+    </AuthShell>
   );
 }

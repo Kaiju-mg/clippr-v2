@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Scissors, Wallet } from "lucide-react";
 import { PerforatedBar } from "@/components/ui/PerforatedBar";
+import { Stamp } from "@/components/ui/Stamp";
 import { StatTile, Tile, tileClasses } from "@/components/ui/Tile";
 import { cn, formatGuaranies } from "@/lib/utils";
 import type { OwnerStats } from "@/actions/stats.actions";
@@ -11,6 +12,13 @@ export const RANGE_LABELS: Record<RangeKey, string> = {
   hoy: "Hoy",
   semana: "Esta semana",
   mes: "Este mes",
+};
+
+/** El sello del primer puesto dice de qué rango es el mejor. */
+export const MEJOR_LABELS: Record<RangeKey, string> = {
+  hoy: "Mejor de hoy",
+  semana: "Mejor de la semana",
+  mes: "Mejor del mes",
 };
 
 const INGRESOS_LABELS: Record<RangeKey, string> = {
@@ -120,10 +128,15 @@ export function OwnerDashboard({ stats, range }: OwnerDashboardProps) {
           </p>
         ) : (
           <ul className="flex flex-col gap-3">
-            {conActividad.map((member) => (
+            {conActividad.map((member, index) => (
               <li key={member.userId} className="flex flex-col gap-1.5">
                 <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-[15px]">{member.name}</span>
+                  <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[15px]">
+                    {member.name}
+                    {/* Sólo hay "mejor" entre quienes trabajaron: la lista
+                        ya viene sin los que no tuvieron actividad. */}
+                    {index === 0 && <Stamp>{MEJOR_LABELS[range]}</Stamp>}
+                  </span>
                   <span className="font-mono text-sm font-semibold tabular-nums">
                     {formatGuaranies(member.income)}
                   </span>

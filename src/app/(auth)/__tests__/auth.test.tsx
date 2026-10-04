@@ -159,3 +159,29 @@ describe("RegistroPage", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("Login y registro — tema Recibo", () => {
+  it.each([
+    ["login", LoginPage, "Iniciar sesión"],
+    ["registro", RegistroPage, "Crear cuenta"],
+  ])("%s: poste, 'Clippr', la bajada y el form en papel", (_, Page, titulo) => {
+    const { container } = render(<Page />);
+
+    expect(screen.getByText("Clippr")).toBeInTheDocument();
+    expect(
+      screen.getByText("Turnos, caja y racha de tu barbería"),
+    ).toBeInTheDocument();
+    expect(container.querySelector("[data-tier]")).not.toBeNull();
+
+    const tarjeta = screen.getByRole("region", { name: titulo });
+    expect(tarjeta).toHaveClass("ticket-edge", "bg-surface-2");
+    expect(tarjeta.querySelector("form")).not.toBeNull();
+  });
+
+  it("el login invita a registrar la barbería", () => {
+    render(<LoginPage />);
+    expect(
+      screen.getByRole("link", { name: "Registrá tu barbería" }),
+    ).toHaveAttribute("href", "/registro");
+  });
+});

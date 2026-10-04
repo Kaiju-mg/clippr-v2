@@ -9,6 +9,8 @@ import type { User, UserLevel } from "@/types";
 interface TeamListProps {
   team: User[];
   isOwner: boolean;
+  /** Email por id de usuario. Sólo llega para el dueño (`getTeamEmailsAction`). */
+  emails?: Record<string, string>;
 }
 
 const NIVEL_LABELS: Record<UserLevel, string> = {
@@ -18,7 +20,7 @@ const NIVEL_LABELS: Record<UserLevel, string> = {
   elite: "Elite",
 };
 
-export function TeamList({ team, isOwner }: TeamListProps) {
+export function TeamList({ team, isOwner, emails = {} }: TeamListProps) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -83,16 +85,23 @@ export function TeamList({ team, isOwner }: TeamListProps) {
                     <span className="font-display truncate text-[17px] font-semibold">
                       {member.name}
                     </span>
-                    <span className="text-muted text-[13px]">
-                      {member.role === "owner"
-                        ? "Dueño"
-                        : NIVEL_LABELS[member.level]}
+                    {/* El nivel va en el subtítulo, con el mail al lado
+                        (spec 10): "Pro · matias@…". */}
+                    <span className="text-muted truncate text-[13px]">
+                      {[
+                        member.role === "owner"
+                          ? "Dueño"
+                          : NIVEL_LABELS[member.level],
+                        emails[member.id],
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </span>
                   </div>
                   {/* El dueño no cobra comisión: mostrarle "0%" era ruido
                       visual que parecía un dato mal cargado (spec 09). */}
                   {member.role !== "owner" && (
-                    <span className="text-accent-ink text-[17px] font-bold whitespace-nowrap tabular-nums">
+                    <span className="text-accent-ink font-mono text-[15px] font-semibold whitespace-nowrap tabular-nums">
                       {member.commission_pct}%
                     </span>
                   )}

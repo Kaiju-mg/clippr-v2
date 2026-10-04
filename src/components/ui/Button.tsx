@@ -2,8 +2,8 @@ import type { ComponentPropsWithRef } from "react";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
-// Con `ref`: React 19 lo pasa como una prop más, y la hoja del poste lo usa
-// para poner el foco en "Listo" al abrirse.
+// Con `ref`: React 19 lo pasa como una prop más; sirve para poner el foco
+// desde afuera (lo usaba la hoja del poste, que ya no existe).
 interface ButtonProps extends ComponentPropsWithRef<"button"> {
   variant?: ButtonVariant;
 }

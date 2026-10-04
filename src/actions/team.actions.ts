@@ -119,6 +119,50 @@ export async function getTeamAction(): Promise<TeamActionResult<User[]>> {
 }
 
 /**
+ * Emails del equipo, por id de `public.users`, para el subtítulo de
+ * `/equipo` ("Pro · mail", spec 10). El email vive en `auth.users`, que sólo
+ * se lee con la clave de servicio.
+ *
+ * **Sólo para el dueño**: a un barbero le devuelve `{}`, para no exponerle
+ * los mails de sus compañeros. No recibe nada del cliente a propósito (un
+ * Server Action se puede llamar con cualquier argumento): el equipo se lee
+ * acá, acotado por RLS a la barbería propia. Si falla algo —incluida la
+ * falta de `SUPABASE_SERVICE_ROLE_KEY`— devuelve `{}` y la pantalla muestra
+ * sólo el nivel.
+ */
+export async function getTeamEmailsAction(): Promise<Record<string, string>> {
+  const supabase = await createClient();
+  const profile = await getCurrentProfile(supabase);
+
+  if (!profile || profile.role !== "owner") return {};
+
+  const { data, error } = await supabase.from("users").select("id, auth_id");
+
+  if (error || !data) {
+    if (error) console.error("getTeamEmailsAction:", error.message);
+    return {};
+  }
+
+  try {
+    const admin = createAdminClient();
+    const entries = await Promise.all(
+      (data as { id: string; auth_id: string }[]).map(async (member) => {
+        const { data: found, error: authError } =
+          await admin.auth.admin.getUserById(member.auth_id);
+        const email = found?.user?.email;
+        return authError || !email ? null : ([member.id, email] as const);
+      }),
+    );
+    return Object.fromEntries(
+      entries.filter((entry): entry is readonly [string, string] => !!entry),
+    );
+  } catch (adminError) {
+    console.error("getTeamEmailsAction:", adminError);
+    return {};
+  }
+}
+
+/**
  * Da de alta a un barbero: crea su cuenta de Auth (Admin API, sin afectar
  * la sesión del dueño) y su perfil en public.users. Solo un dueño puede
  * ejecutar esto — se valida acá, no solo con RLS (ver docs/specs/03).

@@ -3,7 +3,10 @@ import { cookies } from "next/headers";
 import { ChevronRight } from "lucide-react";
 import { logoutAction } from "@/actions/auth.actions";
 import { ThemeSwitch } from "@/components/ui/ThemeSwitch";
+import { createClient } from "@/lib/supabase/server";
 import { parseTheme, THEME_COOKIE } from "@/lib/theme";
+import type { SubscriptionPlan, UserRole } from "@/types";
+import { BarbershopCard } from "./_components/BarbershopCard";
 
 // Estadísticas entra acá y no en la BottomNav: la barra se mantiene en 4
 // íconos de uso diario (decisión del 2026-09-15, ver docs/decisiones.md) y
@@ -17,13 +20,54 @@ const LINKS = [
   { href: "/mas/cambiar-password", label: "Cambiar contraseña" },
 ];
 
+interface PerfilConBarberia {
+  name: string;
+  role: UserRole;
+  barbershops: { name: string; subscription_plan: SubscriptionPlan } | null;
+}
+
+/**
+ * Perfil propio con su barbería, para la tarjeta de arriba. RLS acota las dos
+ * tablas a lo propio (`users_select_same_barbershop`,
+ * `barbershops_select_own`); si algo falla, `/mas` se muestra sin tarjeta.
+ */
+async function perfilConBarberia(): Promise<PerfilConBarberia | null> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from("users")
+    .select("name, role, barbershops(name, subscription_plan)")
+    .eq("auth_id", user.id)
+    .maybeSingle<PerfilConBarberia>();
+
+  if (error) {
+    console.error("MasPage (perfil):", error.message);
+    return null;
+  }
+  return data;
+}
+
 export default async function MasPage() {
   const store = await cookies();
   const theme = parseTheme(store.get(THEME_COOKIE)?.value);
+  const perfil = await perfilConBarberia();
 
   return (
     <div className="flex flex-col gap-4 p-4">
       <h1 className="font-display text-xl font-semibold">Más</h1>
+
+      {perfil?.barbershops && (
+        <BarbershopCard
+          barbershopName={perfil.barbershops.name}
+          userName={perfil.name}
+          role={perfil.role}
+          plan={perfil.barbershops.subscription_plan ?? null}
+        />
+      )}
 
       <div className="border-line border-b">
         <ThemeSwitch initialTheme={theme} />

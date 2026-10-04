@@ -54,6 +54,7 @@
   --paper: #fffdf6;
   --paper-ink: #26231d;
   --paper-rule: #8c867a;
+  --paper-stamp: #b3261e;
 }
 
 [data-theme="dark"] {
@@ -77,6 +78,8 @@
   --paper: #f3eedf;
   --paper-ink: #26231d;
   --paper-rule: #8c867a;
+  /* Sobre el papel el sello es siempre el rojo claro (spec 10). */
+  --paper-stamp: #b3261e;
 }
 
 @theme inline {
@@ -97,6 +100,7 @@
   --color-paper: var(--paper);
   --color-paper-ink: var(--paper-ink);
   --color-paper-rule: var(--paper-rule);
+  --color-paper-stamp: var(--paper-stamp);
   --font-sans: var(--font-inter);
   /* Sólo montos y horas (`font-mono tabular-nums`), nunca títulos ni
      nombres: ver spec 10, "Tipografía". */
@@ -107,7 +111,14 @@
   --radius-tile: 1.25rem;
   /* Latido del cubo de racha en el día de gracia (ver StreakTile). */
   --animate-streak-beat: streak-beat 1.8s ease-in-out infinite;
-  --animate-streak-stamp: streak-stamp 0.55s cubic-bezier(0.3, 1.8, 0.5, 1);
+  /* Tema Recibo (spec 10, fase 2). Todas con `both`: el estado inicial
+     (invisible, arriba) lo pone la animación, así con "reducir movimiento"
+     (`motion-reduce:animate-none`) todo aparece entero y en su lugar. */
+  --animate-stamp-slam: stamp-slam 0.5s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+  --animate-ticket-scrim: ticket-scrim 0.45s ease-out both;
+  --animate-ticket-mouth: ticket-mouth 0.3s ease-out both;
+  --animate-ticket-print: ticket-print 2s steps(14) both;
+  --animate-ticket-rise: ticket-rise 0.35s ease-out both;
 }
 
 body {
@@ -137,23 +148,78 @@ body {
   );
 }
 
-@keyframes streak-beat {
-  50% {
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 25%, transparent);
+/*
+ * Borde inferior picado del ticket (spec 10): dientes hechos con dos
+ * gradientes, sin imágenes ni texturas (regla 5). El color de los dientes es
+ * `--edge-color`, que tiene que ser el mismo fondo de la tarjeta.
+ */
+@layer components {
+  .ticket-edge {
+    position: relative;
+    --edge-size: 8px;
+  }
+  .ticket-edge::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    height: var(--edge-size);
+    background:
+      linear-gradient(135deg, var(--edge-color) 50%, transparent 50%) 0 0 /
+        var(--edge-size) var(--edge-size),
+      linear-gradient(-135deg, var(--edge-color) 50%, transparent 50%) 0 0 /
+        var(--edge-size) var(--edge-size);
+    background-repeat: repeat-x;
   }
 }
 
-/* El número nuevo de la racha "cae como un sello" (StreakCelebration). */
-@keyframes streak-stamp {
+/* El sello cae: grande, se pasa un poco y se asienta. Usa `scale` y no
+   `transform` para no pisar la rotación del sello (`rotate`). */
+@keyframes stamp-slam {
   0% {
-    transform: scale(2.4) rotate(-10deg);
     opacity: 0;
+    scale: 2.6;
   }
-  60% {
-    transform: scale(0.9) rotate(2deg);
-    opacity: 1;
+  55% {
+    opacity: 0.95;
+    scale: 0.92;
   }
   100% {
-    transform: none;
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes ticket-scrim {
+  from {
+    background-color: transparent;
+  }
+}
+
+@keyframes ticket-mouth {
+  from {
+    opacity: 0;
+    transform: scaleX(0.85);
+  }
+}
+
+/* El papel sale de la boca de la impresora renglón por renglón. */
+@keyframes ticket-print {
+  from {
+    transform: translateY(-104%);
+  }
+}
+
+@keyframes ticket-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes streak-beat {
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 25%, transparent);
   }
 }

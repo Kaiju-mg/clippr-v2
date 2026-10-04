@@ -82,8 +82,20 @@ describe("tokens del tema Recibo (spec 10)", () => {
     );
   });
 
+  it("el sello sobre el papel es siempre el rojo claro, en los dos temas", () => {
+    // Fase 2: el ticket redefine `--stamp` con `--paper-stamp` adentro.
+    expect(THEMES.light["--paper-stamp"]).toBe("#b3261e");
+    expect(THEMES.dark["--paper-stamp"]).toBe("#b3261e");
+  });
+
   it("registra los tokens nuevos como colores de Tailwind", () => {
-    for (const name of ["stamp", "paper", "paper-ink", "paper-rule"]) {
+    for (const name of [
+      "stamp",
+      "paper",
+      "paper-ink",
+      "paper-rule",
+      "paper-stamp",
+    ]) {
       expect(themeInline[`--color-${name}`]).toBe(`var(--${name})`);
     }
   });
@@ -127,12 +139,15 @@ describe("contraste AA (4.5:1 para texto)", () => {
     });
   }
 
-  it("el sello claro se lee sobre el papel del ticket en oscuro", () => {
+  it("el sello se lee sobre el papel del ticket en los dos temas", () => {
     // Sobre el papel, el sello usa siempre el rojo claro (spec 10): el papel
     // es claro en los dos temas.
-    expect(
-      contrast(THEMES.light["--stamp"], THEMES.dark["--paper"]),
-    ).toBeGreaterThanOrEqual(4.5);
+    for (const theme of ["light", "dark"] as const) {
+      const tokens = THEMES[theme];
+      expect(
+        contrast(tokens["--paper-stamp"], tokens["--paper"]),
+      ).toBeGreaterThanOrEqual(4.5);
+    }
   });
 
   it("el punteado del ticket se distingue del papel (3:1, no es texto)", () => {
