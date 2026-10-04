@@ -2,7 +2,9 @@
 
 import { createClient } from "@/lib/supabase/server";
 import {
+  businessDateOf,
   businessDayRangeUtc,
+  businessMonthStart,
   businessRangeUtc,
   daysBetweenDateISO,
   isValidDateISO,
@@ -13,7 +15,18 @@ import {
   levelProgress,
   type LevelProgress,
 } from "@/lib/levels";
-import { lastWorkedDate } from "@/lib/streak-days";
+import { summarizeCash, type CashSummary } from "@/lib/cash-summary";
+import {
+  showsMonthTicket,
+  summarizeMonth,
+  type MonthSummary,
+} from "@/lib/month-summary";
+import {
+  STAMP_CARD_LOOKBACK_DAYS,
+  stampCardDays,
+  type StampDay,
+} from "@/lib/stamp-card";
+import { businessDatesWithIncome, lastWorkedDate } from "@/lib/streak-days";
 import { streakStatus, visibleStreak, type StreakStatus } from "@/lib/streaks";
 import type { UserLevel } from "@/types";
 
@@ -409,6 +422,310 @@ export async function getOwnerStatsAction(
       averageTicket:
         totalCuts > 0 ? Math.round(totalServiceIncome / totalCuts) : 0,
       leaderboard,
+    },
+  };
+}
+
+export interface TeamClosure {
+  sessionId: string;
+  userId: string;
+  barberName: string | null;
+  /** `end_time` de la caja. */
+  closedAt: string;
+  /** Lo mismo que imprimió el ticket del cierre de ese barbero. */
+  summary: CashSummary;
+}
+
+/**
+ * "Cierres de hoy" del dueño (spec 10, fase 4): un ticket por cada caja que
+ * se cerró en el día pedido, del primero al último. El resumen sale de
+ * `summarizeCash`, la misma función del cierre: es exactamente el ticket que
+ * vio el barbero al cerrar, y su TOTAL es el `final_balance` guardado.
+ *
+ * Una caja es del día de su `start_time` (la jornada), igual que la racha.
+ * Sólo el dueño: la RLS de `cash_sessions`/`transactions` le deja leer las
+ * de toda su barbería (spec 08), y no hay `WHERE barbershop_id` a mano
+ * (regla 2). Acá no se filtra `user_id` porque se quieren las de todo el
+ * equipo, justamente.
+ */
+export async function getTeamClosuresAction(
+  dateISO: string,
+): Promise<StatsActionResult<TeamClosure[]>> {
+  if (!isValidDateISO(dateISO)) {
+    return { success: false, error: MENSAJE_FECHA_INVALIDA };
+  }
+
+  const supabase = await createClient();
+  const profile = await getCurrentProfile(supabase);
+
+  if (!profile) {
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
+  if (profile.role !== "owner") {
+    return { success: false, error: MENSAJE_ACCESO_DENEGADO };
+  }
+
+  const range = businessDayRangeUtc(dateISO);
+
+  const { data: sessions, error: sessionsError } = await supabase
+    .from("cash_sessions")
+    .select("id, user_id, end_time, initial_balance")
+    .eq("status", "closed")
+    .gte("start_time", range.start)
+    .lt("start_time", range.end)
+    .order("end_time", { ascending: true });
+
+  if (sessionsError) {
+    console.error(
+      "getTeamClosuresAction (cash_sessions):",
+      sessionsError.message,
+    );
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
+  const closed = (sessions ?? []) as {
+    id: string;
+    user_id: string;
+    end_time: string | null;
+    initial_balance: number;
+  }[];
+
+  if (closed.length === 0) return { success: true, data: [] };
+
+  const [transactions, team] = await Promise.all([
+    supabase
+      .from("transactions")
+      .select("cash_session_id, type, amount, category")
+      .in(
+        "cash_session_id",
+        closed.map((session) => session.id),
+      ),
+    supabase.from("users").select("id, name"),
+  ]);
+
+  if (transactions.error || team.error) {
+    console.error(
+      "getTeamClosuresAction:",
+      transactions.error?.message ?? team.error?.message,
+    );
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
+  const rowsBySession = new Map<
+    string,
+    { type: string; amount: number; category: string | null }[]
+  >();
+  for (const row of (transactions.data ?? []) as {
+    cash_session_id: string;
+    type: string;
+    amount: number;
+    category: string | null;
+  }[]) {
+    const rows = rowsBySession.get(row.cash_session_id) ?? [];
+    rows.push(row);
+    rowsBySession.set(row.cash_session_id, rows);
+  }
+
+  const names = new Map(
+    ((team.data ?? []) as { id: string; name: string }[]).map((member) => [
+      member.id,
+      member.name,
+    ]),
+  );
+
+  return {
+    success: true,
+    data: closed.map((session) => ({
+      sessionId: session.id,
+      userId: session.user_id,
+      barberName: names.get(session.user_id) ?? null,
+      closedAt: session.end_time ?? range.end,
+      summary: summarizeCash(
+        session.initial_balance,
+        rowsBySession.get(session.id) ?? [],
+      ),
+    })),
+  };
+}
+
+export interface MonthTicket {
+  month: MonthSummary;
+  barberName: string;
+  /** Para la imagen de compartir: encabezado y "Turnos: …". */
+  barbershopName: string;
+  phone: string | null;
+}
+
+/**
+ * El ticket del mes anterior del barbero autenticado (spec 10, fase 4). Sólo
+ * en los primeros días del mes (`showsMonthTicket`) y sólo si ese mes tuvo
+ * algún corte o algún día trabajado: si no, `null` y la pantalla no muestra
+ * nada.
+ *
+ * Todo sale de acá (regla 1 de CLAUDE.md): los cortes por `start_time` como
+ * la agenda, la racha más larga de las cajas cerradas con cobro del mes (la
+ * regla del día de gracia de `src/lib/streaks.ts`) y lo cobrado con
+ * `sumIncome`. `user_id` se filtra a mano en todas las consultas: la RLS ya
+ * no acota esas tablas a lo propio para el dueño (spec 08), y el dueño
+ * también tiene su ticket del mes.
+ */
+export async function getMonthTicketAction(
+  todayISO: string,
+): Promise<StatsActionResult<MonthTicket | null>> {
+  if (!isValidDateISO(todayISO)) {
+    return { success: false, error: MENSAJE_FECHA_INVALIDA };
+  }
+
+  if (!showsMonthTicket(todayISO)) return { success: true, data: null };
+
+  const supabase = await createClient();
+  const profile = await getCurrentProfile(supabase);
+
+  if (!profile) {
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
+  const currentMonthStart = businessMonthStart(todayISO);
+  const monthEnd = shiftDateISO(currentMonthStart, -1);
+  const monthStart = businessMonthStart(monthEnd);
+  const range = businessRangeUtc(monthStart, monthEnd);
+
+  const [cutsResult, sessionsResult, incomeByUser, barbershopResult] =
+    await Promise.all([
+      supabase
+        .from("appointments")
+        .select("start_time, services(name)")
+        .eq("user_id", profile.id)
+        .eq("status", "completed")
+        .gte("start_time", range.start)
+        .lt("start_time", range.end),
+      supabase
+        .from("cash_sessions")
+        .select("id, start_time")
+        .eq("user_id", profile.id)
+        .eq("status", "closed")
+        .gte("start_time", range.start)
+        .lt("start_time", range.end),
+      sumIncome(supabase, [profile.id], range),
+      supabase
+        .from("barbershops")
+        .select("name, phone")
+        .maybeSingle<{ name: string; phone: string | null }>(),
+    ]);
+
+  if (
+    cutsResult.error ||
+    sessionsResult.error ||
+    incomeByUser === null ||
+    barbershopResult.error
+  ) {
+    console.error(
+      "getMonthTicketAction:",
+      cutsResult.error?.message ??
+        sessionsResult.error?.message ??
+        barbershopResult.error?.message ??
+        "sumIncome",
+    );
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
+  const workedDates = await businessDatesWithIncome(
+    supabase,
+    (sessionsResult.data ?? []) as { id: string; start_time: string }[],
+  );
+  if (workedDates === null) {
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
+  const cuts = (
+    (cutsResult.data ?? []) as unknown as {
+      start_time: string;
+      services: { name: string | null } | null;
+    }[]
+  ).map((row) => ({
+    dateISO: businessDateOf(new Date(row.start_time)),
+    serviceName: row.services?.name ?? null,
+  }));
+
+  if (cuts.length === 0 && workedDates.length === 0) {
+    return { success: true, data: null };
+  }
+
+  return {
+    success: true,
+    data: {
+      month: summarizeMonth(
+        monthStart,
+        cuts,
+        workedDates,
+        incomeByUser.get(profile.id)?.total ?? 0,
+      ),
+      barberName: profile.name,
+      barbershopName: barbershopResult.data?.name ?? "Clippr",
+      phone: barbershopResult.data?.phone ?? null,
+    },
+  };
+}
+
+export interface StampCard {
+  monthStartISO: string;
+  days: StampDay[];
+}
+
+/**
+ * Tarjeta de sellos del mes en curso del barbero autenticado (spec 10, fase
+ * 4). Lee las cajas cerradas desde `STAMP_CARD_LOOKBACK_DAYS` antes del 1°
+ * hasta hoy, para saber con cuánta racha arrancó el mes; los días trabajados
+ * salen de `businessDatesWithIncome`, el mismo criterio de la racha. `user_id`
+ * a mano: la RLS no acota `cash_sessions` a lo propio para el dueño.
+ */
+export async function getStampCardAction(
+  todayISO: string,
+): Promise<StatsActionResult<StampCard>> {
+  if (!isValidDateISO(todayISO)) {
+    return { success: false, error: MENSAJE_FECHA_INVALIDA };
+  }
+
+  const supabase = await createClient();
+  const profile = await getCurrentProfile(supabase);
+
+  if (!profile) {
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
+  const monthStart = businessMonthStart(todayISO);
+  const range = businessRangeUtc(
+    shiftDateISO(monthStart, -STAMP_CARD_LOOKBACK_DAYS),
+    todayISO,
+  );
+
+  const { data, error } = await supabase
+    .from("cash_sessions")
+    .select("id, start_time")
+    .eq("user_id", profile.id)
+    .eq("status", "closed")
+    .gte("start_time", range.start)
+    .lt("start_time", range.end);
+
+  if (error) {
+    console.error("getStampCardAction:", error.message);
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
+  const workedDates = await businessDatesWithIncome(
+    supabase,
+    (data ?? []) as { id: string; start_time: string }[],
+  );
+  if (workedDates === null) {
+    return { success: false, error: MENSAJE_ERROR_GENERICO };
+  }
+
+  return {
+    success: true,
+    data: {
+      monthStartISO: monthStart,
+      days: stampCardDays(monthStart, todayISO, workedDates),
     },
   };
 }

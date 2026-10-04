@@ -64,7 +64,10 @@ describe("Stamp — vibración al caer (fase 3)", () => {
 
   function stubVibrate() {
     const fn = vi.fn(() => true);
-    Object.defineProperty(navigator, "vibrate", { configurable: true, value: fn });
+    Object.defineProperty(navigator, "vibrate", {
+      configurable: true,
+      value: fn,
+    });
     return fn;
   }
 

@@ -8,6 +8,7 @@ import { ScheduleInlineForm } from "./ScheduleInlineForm";
 import { AppointmentRow } from "./AppointmentRow";
 import { formatBusinessDateLabel, shiftDateISO } from "@/lib/dates";
 import type { Appointment, Service } from "@/types";
+import { BlankTicket } from "@/components/ticket/BlankTicket";
 
 interface AgendaViewProps {
   dateISO: string;
@@ -96,14 +97,14 @@ export function AgendaView({
       )}
 
       {appointments.length === 0 && !isCreating ? (
-        <div className="flex flex-col items-center gap-3 py-10 text-center">
-          <p className="text-muted text-sm">
-            Todavía no hay turnos para este día.
-          </p>
+        <BlankTicket
+          text="Todavía no hay turnos para este día."
+          className="py-4"
+        >
           <Button onClick={() => setIsCreating(true)}>
             Agendar el primer turno
           </Button>
-        </div>
+        </BlankTicket>
       ) : (
         <ul className="flex flex-col">
           {appointments.map((appointment) => {

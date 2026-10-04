@@ -4,7 +4,8 @@ import { PerforatedBar } from "@/components/ui/PerforatedBar";
 import { Stamp } from "@/components/ui/Stamp";
 import { StatTile, Tile, tileClasses } from "@/components/ui/Tile";
 import { cn, formatGuaranies } from "@/lib/utils";
-import type { OwnerStats } from "@/actions/stats.actions";
+import type { OwnerStats, TeamClosure } from "@/actions/stats.actions";
+import { TeamClosures } from "./TeamClosures";
 
 export type RangeKey = "hoy" | "semana" | "mes";
 
@@ -30,6 +31,8 @@ const INGRESOS_LABELS: Record<RangeKey, string> = {
 interface OwnerDashboardProps {
   stats: OwnerStats;
   range: RangeKey;
+  /** Cierres de hoy del equipo (fase 4); null si la consulta falló. */
+  closures?: TeamClosure[] | null;
 }
 
 /**
@@ -41,7 +44,11 @@ interface OwnerDashboardProps {
  * El "gráfico" del equipo son barras perforadas (`PerforatedBar`, spec 10)
  * proporcionales al mejor del rango — sin librerías de gráficos.
  */
-export function OwnerDashboard({ stats, range }: OwnerDashboardProps) {
+export function OwnerDashboard({
+  stats,
+  range,
+  closures = [],
+}: OwnerDashboardProps) {
   const conActividad = stats.leaderboard.filter(
     (member) => member.cuts > 0 || member.income > 0,
   );
@@ -157,6 +164,8 @@ export function OwnerDashboard({ stats, range }: OwnerDashboardProps) {
       <p className="text-muted text-xs">
         {stats.days} {stats.days === 1 ? "día" : "días"} en el rango.
       </p>
+
+      <TeamClosures closures={closures} />
     </div>
   );
 }

@@ -1,17 +1,6 @@
 import type { ReactNode } from "react";
-import { Courier_Prime } from "next/font/google";
 import { cn } from "@/lib/utils";
-
-/**
- * Courier Prime sólo para el ticket (spec 10): `preload: false` para que el
- * archivo no se baje en todas las pantallas del dashboard, sino recién cuando
- * aparece un ticket en pantalla.
- */
-const courier = Courier_Prime({
-  subsets: ["latin"],
-  weight: ["400", "700"],
-  preload: false,
-});
+import { courier } from "./fonts";
 
 export type TicketLine =
   | { kind: "center"; text: string; strong?: boolean }

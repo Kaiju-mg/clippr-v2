@@ -209,23 +209,23 @@ los tokens, los componentes ya los usan.*
 usan `cash_sessions` y `transactions`, que el dueño ya puede leer desde
 `20260917000000_owner_stats_visibility.sql`.*
 
-- [ ] **Pantallas vacías:** `<BlankTicket text="…" />` (un ticket en
+- [x] **Pantallas vacías:** `<BlankTicket text="…" />` (un ticket en
   blanco con una línea a máquina) reemplaza los textos sueltos de "Todavía
   no hay…" en `/agenda`, `/productos`, `/servicios`, `/equipo`, movimientos
   de `/caja` y "Lo que viene" de `/inicio`.
-- [ ] **Cierres del equipo (dueño):** en `/estadisticas` del dueño, sección
+- [x] **Cierres del equipo (dueño):** en `/estadisticas` del dueño, sección
   "Cierres de hoy" con un `<TicketReceipt />` por barbero que cerró, en
   fila con scroll horizontal en el celular. El resumen lo arma el servidor
   con la misma función que el `summary` del cierre. Ojo: estas consultas
   filtran `user_id` a mano (la RLS de esas tablas ya no acota a lo propio
   para el dueño, ver spec 08).
-- [ ] **Ticket del mes:** en `/estadisticas` del barbero, durante los
+- [x] **Ticket del mes:** en `/estadisticas` del barbero, durante los
   primeros días del mes, el ticket del mes anterior: cortes, servicio más
   pedido, mejor día y racha más larga (calculada en el servidor desde los
   cierres del mes, con la misma regla del día de gracia de
   `src/lib/streaks.ts`). Se comparte con el mismo flujo de la Fase 3, sin
   montos por defecto.
-- [ ] **Tarjeta de sellos de la racha:** grilla del mes en `/estadisticas`
+- [x] **Tarjeta de sellos de la racha:** grilla del mes en `/estadisticas`
   del barbero, un casillero por día. Cada día con caja cerrada y al menos
   un cobro (mismo criterio que la racha) lleva un `<Stamp />`. Los días 7 y
   30 de la racha marcan el poste de oro y el encendido (niveles que ya

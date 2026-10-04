@@ -61,8 +61,8 @@ src/app/                 rutas (App Router)
                           estadisticas
 src/components/          ui/ (BottomNav, Tile — el cubo bento, ThemeSwitch, Input/Select,
                           BarberPole, Stamp, PerforatedBar) · forms/ · timers/ ·
-                          ticket/ (TicketReceipt y el ticket del cierre) · share/
-                          ("Compartir el día": ShareDayScreen, ShareDayImage)
+                          ticket/ (TicketReceipt, BlankTicket, el ticket del cierre) · share/
+                          (compartir en el estado: ShareTicketScreen, ShareImage)
 src/lib/supabase/        client.ts (browser)  ·  server.ts (Server Components/Actions/Route Handlers)
 src/lib/utils.ts         formatGuaranies, formatAmount, cn
 src/lib/cash-summary.ts  resumen de una caja (saldo, ticket del cierre) — pura, la usa el servidor
@@ -413,6 +413,18 @@ cierres con "Compartir" y el PNG real) y de dueño (teléfono desde `/mas`;
 `requestAnimationFrame`, así que con la pestaña oculta la imagen no termina
 (en el navegador automatizado parece colgada). **Pendiente:** compartir hasta
 WhatsApp y el modo avión en un Android real (sobre el Worker, necesita
-HTTPS), y las fases 4 y 5. Ver `docs/arquitectura.md` sección "Tema Recibo".
+HTTPS).
+
+**Fase 4 implementada** (2026-10-04, sin migraciones): `BlankTicket` en las
+pantallas vacías; "Cierres de hoy" en `/estadisticas` del dueño (un ticket
+por caja cerrada hoy, `getTeamClosuresAction`); en la del barbero, la
+tarjeta de sellos del mes (`getStampCardAction`, racha por día con la regla
+del día de gracia, poste en los días 7 y 30) y, del 1 al 7, el ticket del
+mes anterior (`getMonthTicketAction`) compartible con `ShareTicketScreen`,
+la pantalla de compartir generalizada. Verificado: lint, typecheck, Vitest,
+build, y en el navegador contra la base real con sesión de dueño. La vista
+del barbero se vio con los datos del dueño en una página temporal (ya
+borrada). **Pendiente:** la fase 5 (ícono, cuando esté). Ver
+`docs/arquitectura.md` sección "Tema Recibo".
 
 El resto (nada pendiente del backlog) sigue como estaba.

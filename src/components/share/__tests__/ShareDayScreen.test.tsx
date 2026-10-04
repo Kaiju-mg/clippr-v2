@@ -33,7 +33,10 @@ const SHARE: ShareDay = {
   ],
 };
 
-function abrir(overrides: Partial<ShareDay> = {}, streakDays: number | null = 13) {
+function abrir(
+  overrides: Partial<ShareDay> = {},
+  streakDays: number | null = 13,
+) {
   const onBack = vi.fn();
   render(
     <ShareDayScreen
@@ -46,7 +49,10 @@ function abrir(overrides: Partial<ShareDay> = {}, streakDays: number | null = 13
       onBack={onBack}
     />,
   );
-  return { onBack, imagen: screen.getByRole("region", { name: "Ticket del día" }) };
+  return {
+    onBack,
+    imagen: screen.getByRole("region", { name: "Ticket del día" }),
+  };
 }
 
 beforeEach(() => {
@@ -131,9 +137,7 @@ describe("ShareDayScreen — compartir el día", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /compartir imagen/i }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      /se descargó/i,
-    );
+    expect(await screen.findByRole("status")).toHaveTextContent(/se descargó/i);
   });
 
   it("si no se puede armar la imagen, lo dice y deja reintentar", async () => {

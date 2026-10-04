@@ -6,6 +6,7 @@ import { Tile } from "@/components/ui/Tile";
 import { formatBusinessTime } from "@/lib/dates";
 import { useTimerStore, useTimerStoreHydrated } from "@/store/timerStore";
 import type { Appointment, Service } from "@/types";
+import { BlankTicket } from "@/components/ticket/BlankTicket";
 
 interface UpcomingAppointmentsProps {
   appointments: Appointment[];
@@ -85,11 +86,14 @@ export function UpcomingAppointments({
           No pudimos cargar tus turnos de hoy.
         </p>
       ) : visibles.length === 0 ? (
-        <p className="text-muted text-sm">
-          {todosEnCurso
-            ? "Todos los turnos de hoy están en curso."
-            : "No tenés turnos agendados para hoy."}
-        </p>
+        <BlankTicket
+          tone="inset"
+          text={
+            todosEnCurso
+              ? "Todos los turnos de hoy están en curso."
+              : "No tenés turnos agendados para hoy."
+          }
+        />
       ) : (
         <ul className="flex flex-col">
           {visibles.map((appointment) => (

@@ -1598,3 +1598,62 @@ Descartado: guardar la preferencia en la base, y sonidos (no se acordaron).
 Por qué: depende del teléfono, no de la persona (en iPhone no hay
 `navigator.vibrate`: no hace nada y el switch lo avisa).
 Costo: la preferencia no viaja entre dispositivos.
+
+## 2026-10-04 — "Cierres de hoy" es un ticket por caja, no por barbero
+Elegido (spec 10, fase 4): en `/estadisticas` del dueño, un `TicketReceipt`
+por cada **caja** cerrada hoy (por `start_time`, la jornada), en orden de
+cierre, con `summarizeCash` y `closeTicketLines`: es exactamente el ticket
+que vio el barbero al cerrar. Va siempre con los de hoy, sea cual sea el
+rango de arriba.
+Descartado: juntar las cajas de un mismo barbero en un solo ticket.
+Por qué: la spec dice "un ticket por barbero que cerró", pero un barbero
+puede cerrar dos cajas el mismo día (pasó en la prueba del 2026-10-04), y un
+ticket que suma dos saldos iniciales no es ningún cierre real: no coincidiría
+con ningún `final_balance`.
+Costo: un barbero con dos cierres aparece dos veces en la fila.
+
+## 2026-10-04 — El ticket del mes: días 1 a 7 y "COBRADO" con montos
+Elegido: `getMonthTicketAction` arma el resumen del mes anterior sólo del 1
+al 7 del mes (`MONTH_TICKET_LAST_DAY`) y sólo si hubo algún corte o día
+trabajado. Cortes por `start_time` (como la agenda), "más pedido" con
+`countCutsByService`, "mejor día" por cantidad de cortes (a igual cantidad,
+el primero) y la racha más larga recorriendo los días trabajados con
+`nextStreakCount`, la misma función del cierre. Con "Mostrar montos" suma
+**COBRADO**: todo lo que entró en el mes (`sumIncome`, cortes + ventas +
+manuales). La pantalla de compartir se generalizó (`ShareTicketScreen`) y la
+usan el día y el mes.
+Descartado: un TOTAL de saldo como en el cierre (un saldo de caja no tiene
+sentido para un mes), y mostrar el ticket todo el mes.
+Por qué: "primeros días del mes" queda en una semana, lo que tarda en
+dejar de ser noticia. El mejor día por cortes y no por plata, porque la
+imagen sale sin montos por defecto.
+Costo: el dueño (que también corta) no lo ve: `/estadisticas` del dueño
+es otro dashboard (la spec lo pone en la vista del barbero).
+
+## 2026-10-04 — Tarjeta de sellos: la racha de cada día se mira 90 días atrás
+Elegido: `getStampCardAction` lee las cajas cerradas desde 90 días antes del
+1° del mes (`STAMP_CARD_LOOKBACK_DAYS`) y `streakByDay` calcula la racha al
+final de cada día trabajado con `nextStreakCount`. Los días en que la racha
+llega justo a 7 y a 30 llevan el poste de oro o el encendido (`BarberPole`
+achicado a la mitad en la esquina de la celda); los días trabajados, el
+número estampado con `<Stamp />` quieto.
+Descartado: contar la racha sólo desde el 1° del mes (el día 7 o 30 caería
+mal si la racha venía del mes anterior), y leer el historial entero.
+Por qué: una racha que viene de septiembre tiene que marcar su día 30 donde
+de verdad cae. Con 90 días hacia atrás sólo una racha de más de tres meses
+podría marcarlo mal.
+Costo: una consulta de hasta ~120 días de cajas por visita a
+`/estadisticas` del barbero.
+
+## 2026-10-04 — Las pantallas vacías son un ticket de la app, no papel
+Elegido: `<BlankTicket />` usa `--surface-2` con zigzag (como los
+movimientos de `/caja`), renglones punteados vacíos y una línea en Courier
+Prime. Adentro de un cubo va con `tone="inset"` (fondo de la pantalla), si
+no se pierde la forma. En `/caja` sin movimientos, la línea va adentro del
+ticket existente. Y los tickets de papel sobre la página (cierres de hoy,
+ticket del mes) llevan `drop-shadow`: en claro el papel y el fondo son del
+mismo color.
+Descartado: papel (`--paper`) para las pantallas vacías.
+Por qué: una lista vacía no es un objeto impreso (regla 4); en oscuro un
+papel claro por cada pantalla vacía gritaría más que el contenido.
+Costo: dos tonos para el mismo componente.

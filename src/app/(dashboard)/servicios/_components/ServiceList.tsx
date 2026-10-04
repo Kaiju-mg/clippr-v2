@@ -8,6 +8,7 @@ import { ServiceInlineForm } from "./ServiceInlineForm";
 import { toggleServiceStatusAction } from "@/actions/service.actions";
 import { formatGuaranies } from "@/lib/utils";
 import type { Service } from "@/types";
+import { BlankTicket } from "@/components/ticket/BlankTicket";
 
 interface ServiceListProps {
   services: Service[];
@@ -100,7 +101,7 @@ export function ServiceList({ services }: ServiceListProps) {
       )}
 
       {optimisticServices.length === 0 && !isCreating ? (
-        <p className="text-muted text-sm">Todavía no cargaste servicios.</p>
+        <BlankTicket text="Todavía no cargaste servicios." />
       ) : (
         <ul className="flex flex-col">
           {optimisticServices.map((service) => {

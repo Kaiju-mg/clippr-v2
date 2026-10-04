@@ -7,9 +7,14 @@ import {
   vibrate,
 } from "./haptics";
 
-function stubVibrate(impl: (pattern: number | number[]) => boolean = () => true) {
+function stubVibrate(
+  impl: (pattern: number | number[]) => boolean = () => true,
+) {
   const fn = vi.fn(impl);
-  Object.defineProperty(navigator, "vibrate", { configurable: true, value: fn });
+  Object.defineProperty(navigator, "vibrate", {
+    configurable: true,
+    value: fn,
+  });
   return fn;
 }
 

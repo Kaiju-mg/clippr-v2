@@ -1,6 +1,7 @@
 import { formatBusinessTime } from "@/lib/dates";
 import { formatAmount, formatGuaranies } from "@/lib/utils";
 import type { Transaction, TransactionCategory } from "@/types";
+import { courier } from "@/components/ticket/fonts";
 
 const CATEGORY_LABELS: Record<TransactionCategory, string> = {
   service: "Corte",
@@ -108,6 +109,15 @@ export function CashMovements({
                 concept="Saldo inicial"
                 amount={formatAmount(initialBalance)}
               />
+            )}
+            {chronological.length === 0 && !hasMore && (
+              // Ticket "en blanco" (spec 10, fase 4): sólo el saldo inicial
+              // y una línea a máquina, en vez de un TOTAL solo.
+              <li
+                className={`${courier.className} border-muted/55 text-muted border-b border-dashed py-3 text-center text-[13px]`}
+              >
+                Todavía no hay movimientos.
+              </li>
             )}
             {chronological.map((movement) => (
               <Row

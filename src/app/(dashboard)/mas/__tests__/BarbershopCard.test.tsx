@@ -72,7 +72,9 @@ describe("BarbershopCard — teléfono para turnos (fase 3)", () => {
     );
     expect(screen.getByText("0981 123 456")).toBeInTheDocument();
     // El barbero no edita la barbería.
-    expect(screen.queryByRole("button", { name: /editar|agregar/i })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /editar|agregar/i }),
+    ).toBeNull();
   });
 
   it("al barbero sin teléfono no le muestra nada para editar", () => {

@@ -11,7 +11,11 @@ const LATIN_EXT = "U+0100-02BA, U+02BD-02C5, U+1E00-1E9F";
 const CYRILLIC = "U+0301, U+0400-045F, U+0490-0491";
 
 function face(family: string, unicodeRange: string): FontFaceInfo {
-  return { family, unicodeRange, cssText: `@font-face { font-family: ${family}; }` };
+  return {
+    family,
+    unicodeRange,
+    cssText: `@font-face { font-family: ${family}; }`,
+  };
 }
 
 describe("usedFamilies", () => {

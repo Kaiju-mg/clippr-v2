@@ -9,6 +9,7 @@ import { ProductInlineForm } from "./ProductInlineForm";
 import { toggleProductStatusAction } from "@/actions/product.actions";
 import { formatGuaranies } from "@/lib/utils";
 import type { Product } from "@/types";
+import { BlankTicket } from "@/components/ticket/BlankTicket";
 
 interface ProductListProps {
   products: Product[];
@@ -113,7 +114,7 @@ export function ProductList({ products, isOwner }: ProductListProps) {
       )}
 
       {optimisticProducts.length === 0 && !isCreating ? (
-        <p className="text-muted text-sm">Todavía no hay productos cargados.</p>
+        <BlankTicket text="Todavía no hay productos cargados." />
       ) : (
         <ul className="flex flex-col">
           {optimisticProducts.map((product) => {

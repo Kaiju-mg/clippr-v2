@@ -74,11 +74,7 @@ export function CloseTicket() {
     <>
       <hr className="border-paper-rule my-[5px] border-0 border-t border-dashed" />
       <div className="flex justify-center pt-1.5 pb-1">
-        <StreakStamp
-          days={streak.current}
-          animate
-          delayMs={SELLO_DELAY_MS}
-        />
+        <StreakStamp days={streak.current} animate delayMs={SELLO_DELAY_MS} />
       </div>
       <p className="m-0 text-center">Mañana va el {streak.current + 1}.</p>
     </>

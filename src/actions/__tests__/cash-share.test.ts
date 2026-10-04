@@ -20,17 +20,33 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 import { closeCashSessionAction } from "../cash.actions";
 
-type Result = { data: unknown; error: { message: string } | null; count?: number };
+type Result = {
+  data: unknown;
+  error: { message: string } | null;
+  count?: number;
+};
 
 /** Builder encadenable: cualquier filtro devuelve el mismo builder. */
 function builder(resolve: () => Result, single?: () => Result) {
   const b: Record<string, unknown> = {};
-  for (const method of ["select", "update", "eq", "neq", "in", "gte", "lt", "lte", "order", "limit"]) {
+  for (const method of [
+    "select",
+    "update",
+    "eq",
+    "neq",
+    "in",
+    "gte",
+    "lt",
+    "lte",
+    "order",
+    "limit",
+  ]) {
     b[method] = vi.fn(() => b);
   }
   b.maybeSingle = vi.fn(async () => (single ?? resolve)());
   b.single = vi.fn(async () => (single ?? resolve)());
-  b.then = (ok: (value: Result) => unknown) => Promise.resolve(resolve()).then(ok);
+  b.then = (ok: (value: Result) => unknown) =>
+    Promise.resolve(resolve()).then(ok);
   return b as Record<string, ReturnType<typeof vi.fn>> & { then: unknown };
 }
 
@@ -60,7 +76,10 @@ function mockCierre({ cortes, barberia }: Opciones = {}) {
   let cashCalls = 0;
   const cash = builder(
     () => ({ data: [], error: null }),
-    () => (cashCalls++ === 0 ? { data: OPEN, error: null } : { data: CLOSED, error: null }),
+    () =>
+      cashCalls++ === 0
+        ? { data: OPEN, error: null }
+        : { data: CLOSED, error: null },
   );
   const transactions = builder(() => ({
     data: [
@@ -102,7 +121,11 @@ function mockCierre({ cortes, barberia }: Opciones = {}) {
   }
 
   const barbershops = builder(
-    () => barberia ?? { data: { name: "El Poste", phone: "0981 123 456" }, error: null },
+    () =>
+      barberia ?? {
+        data: { name: "El Poste", phone: "0981 123 456" },
+        error: null,
+      },
   );
 
   const from = vi.fn((table: string) => {
@@ -122,7 +145,9 @@ function mockCierre({ cortes, barberia }: Opciones = {}) {
 
   vi.mocked(createClient).mockResolvedValue({
     from,
-    auth: { getUser: vi.fn(async () => ({ data: { user: { id: "auth-1" } } })) },
+    auth: {
+      getUser: vi.fn(async () => ({ data: { user: { id: "auth-1" } } })),
+    },
   } as unknown as Awaited<ReturnType<typeof createClient>>);
 
   return { shareQueries, barbershops };
@@ -161,7 +186,10 @@ describe("closeCashSessionAction — datos de 'Compartir el día'", () => {
     const [appointments] = shareQueries;
     expect(appointments.eq).toHaveBeenCalledWith("user_id", CLOSED.user_id);
     expect(appointments.eq).toHaveBeenCalledWith("status", "completed");
-    expect(appointments.gte).toHaveBeenCalledWith("end_time", CLOSED.start_time);
+    expect(appointments.gte).toHaveBeenCalledWith(
+      "end_time",
+      CLOSED.start_time,
+    );
     expect(appointments.lte).toHaveBeenCalledWith("end_time", CLOSED.end_time);
     expect(barbershops.eq).toHaveBeenCalledWith("id", CLOSED.barbershop_id);
   });
@@ -188,7 +216,9 @@ describe("closeCashSessionAction — datos de 'Compartir el día'", () => {
   });
 
   it("una barbería sin teléfono llega con phone null", async () => {
-    mockCierre({ barberia: { data: { name: "El Poste", phone: null }, error: null } });
+    mockCierre({
+      barberia: { data: { name: "El Poste", phone: null }, error: null },
+    });
 
     const result = await closeCashSessionAction("cs1");
 

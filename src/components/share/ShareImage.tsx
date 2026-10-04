@@ -41,29 +41,33 @@ const FONDO: CSSProperties = {
     "repeating-linear-gradient(-45deg, rgba(214,40,40,.07) 0 66px, transparent 66px 104px, rgba(61,109,168,.07) 104px 170px, transparent 170px 208px)",
 };
 
-interface ShareDayImageProps {
+interface ShareImageProps {
   lines: readonly TicketLine[];
   /** Días de racha para el sello; null o 0, sin sello. */
   streakDays: number | null;
   /** "Turnos: …" al pie del ticket; null, no se dibuja. */
   phone: string | null;
+  /** Nombre accesible del ticket ("Ticket del día", "Ticket del mes"). */
+  label?: string;
   ref?: Ref<HTMLDivElement>;
 }
 
 /**
- * La imagen de "Compartir el día" (spec 10, fase 3), a tamaño real: 1080 ×
- * 1920. La misma pieza es la vista previa (achicada con `transform` por quien
+ * La imagen para el estado de WhatsApp, a tamaño real: 1080 × 1920. La usan
+ * "Compartir el día" (fase 3) y el ticket del mes (fase 4). La misma pieza es la vista previa (achicada con `transform` por quien
  * la contiene) y lo que `html-to-image` convierte en PNG, así lo que se ve es
  * exactamente lo que se publica.
  *
- * Sólo de presentación: los renglones llegan armados (`shareTicketLines`).
+ * Sólo de presentación: los renglones llegan armados (`shareTicketLines`,
+ * `monthTicketLines`).
  */
-export function ShareDayImage({
+export function ShareImage({
   lines,
   streakDays,
   phone,
+  label = "Ticket del día",
   ref,
-}: ShareDayImageProps) {
+}: ShareImageProps) {
   const ticketRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(MAX_SCALE);
 
@@ -106,7 +110,7 @@ export function ShareDayImage({
         className="w-[250px] pb-[9px]"
       >
         <TicketReceipt
-          label="Ticket del día"
+          label={label}
           lines={lines}
           footer={footer}
           className="shadow-[0_6px_16px_rgba(0,0,0,0.3)]"

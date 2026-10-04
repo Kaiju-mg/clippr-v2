@@ -1,7 +1,10 @@
 import {
   getBarberStatsAction,
   getCurrentRoleAction,
+  getMonthTicketAction,
   getOwnerStatsAction,
+  getStampCardAction,
+  getTeamClosuresAction,
 } from "@/actions/stats.actions";
 import {
   businessMonthStart,
@@ -45,7 +48,11 @@ export default async function EstadisticasPage({
   const today = businessToday();
 
   if (roleResult.data.role !== "owner") {
-    const statsResult = await getBarberStatsAction(today);
+    const [statsResult, monthResult, stampResult] = await Promise.all([
+      getBarberStatsAction(today),
+      getMonthTicketAction(today),
+      getStampCardAction(today),
+    ]);
 
     if (!statsResult.success) {
       return (
@@ -59,6 +66,10 @@ export default async function EstadisticasPage({
       <BarberDashboard
         stats={statsResult.data}
         firstName={roleResult.data.name.split(" ")[0]}
+        // Las dos son extras de la pantalla: si fallan, no se muestran y el
+        // resto del dashboard sigue.
+        monthTicket={monthResult.success ? monthResult.data : null}
+        stampCard={stampResult.success ? stampResult.data : null}
       />
     );
   }
@@ -68,7 +79,10 @@ export default async function EstadisticasPage({
     : "hoy";
   const { from, to } = resolveRange(range, today);
 
-  const statsResult = await getOwnerStatsAction(from, to);
+  const [statsResult, closuresResult] = await Promise.all([
+    getOwnerStatsAction(from, to),
+    getTeamClosuresAction(today),
+  ]);
 
   if (!statsResult.success) {
     return (
@@ -78,5 +92,11 @@ export default async function EstadisticasPage({
     );
   }
 
-  return <OwnerDashboard stats={statsResult.data} range={range} />;
+  return (
+    <OwnerDashboard
+      stats={statsResult.data}
+      range={range}
+      closures={closuresResult.success ? closuresResult.data : null}
+    />
+  );
 }

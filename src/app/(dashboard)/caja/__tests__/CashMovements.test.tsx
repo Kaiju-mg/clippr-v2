@@ -92,10 +92,22 @@ describe("CashMovements — el ticket de la caja", () => {
     expect(screen.getByText(/Más movimientos antes/)).toBeInTheDocument();
   });
 
-  it("sin movimientos todavía, el ticket tiene el saldo inicial y el total", () => {
+  it("sin movimientos todavía, el ticket tiene el saldo inicial, una línea a máquina y el total", () => {
     render(<CashMovements {...BASE} movements={[]} total={50000} />);
-    expect(filas()).toHaveLength(1);
+    // Saldo inicial + la línea en blanco escrita a máquina (spec 10, fase 4).
+    expect(filas()).toHaveLength(2);
     expect(screen.getByText("Saldo inicial")).toBeInTheDocument();
+    expect(screen.getByText("Todavía no hay movimientos.")).toHaveClass(
+      "font-courier-prime",
+    );
+    expect(screen.getByText("Total")).toBeInTheDocument();
+  });
+
+  it("con movimientos no aparece la línea en blanco", () => {
+    render(<CashMovements {...BASE} />);
+    expect(
+      screen.queryByText("Todavía no hay movimientos."),
+    ).not.toBeInTheDocument();
   });
 
   it("si falla la consulta, avisa en vez de mostrar un ticket vacío", () => {

@@ -196,7 +196,10 @@ describe("CloseTicket — vibración de la impresora (fase 3)", () => {
 
   it("vibra con el patrón de impresora una vez por cierre, y no al volver de Compartir", () => {
     const fn = vi.fn(() => true);
-    Object.defineProperty(navigator, "vibrate", { configurable: true, value: fn });
+    Object.defineProperty(navigator, "vibrate", {
+      configurable: true,
+      value: fn,
+    });
 
     abrir();
     expect(fn).toHaveBeenCalledWith([40, 60, 40, 60, 40]);
@@ -209,7 +212,10 @@ describe("CloseTicket — vibración de la impresora (fase 3)", () => {
 
   it("con la vibración apagada en /mas, imprime sin vibrar", () => {
     const fn = vi.fn(() => true);
-    Object.defineProperty(navigator, "vibrate", { configurable: true, value: fn });
+    Object.defineProperty(navigator, "vibrate", {
+      configurable: true,
+      value: fn,
+    });
     localStorage.setItem("clippr-vibracion", "off");
 
     abrir();

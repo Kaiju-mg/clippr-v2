@@ -11,7 +11,9 @@ import {
   formatBusinessDateLabel,
   formatBusinessDateTime,
   formatBusinessTime,
+  formatMonthLabel,
   formatShareDate,
+  formatShortDay,
   formatTicketDateTime,
   isValidDateISO,
   isValidTime,
@@ -137,5 +139,17 @@ describe("formatShareDate", () => {
     expect(formatShareDate("2026-10-04T15:00:00.000Z")).toBe(
       "Domingo 04/10/2026",
     );
+  });
+});
+
+describe("formatMonthLabel y formatShortDay (ticket del mes)", () => {
+  it("'Septiembre 2026', sin el 'de' de Intl", () => {
+    expect(formatMonthLabel("2026-09-01")).toBe("Septiembre 2026");
+    expect(formatMonthLabel("2026-12-31")).toBe("Diciembre 2026");
+  });
+
+  it("'Sáb 12/09': día corto de un día calendario, sin zona horaria", () => {
+    expect(formatShortDay("2026-09-12")).toBe("Sáb 12/09");
+    expect(formatShortDay("2026-10-04")).toBe("Dom 04/10");
   });
 });

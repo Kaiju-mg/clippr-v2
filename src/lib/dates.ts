@@ -245,3 +245,36 @@ export function formatShareDate(instantISO: string): string {
   const dia = weekday.charAt(0).toUpperCase() + weekday.slice(1);
   return `${dia} ${parts.day}/${parts.month}/${parts.year}`;
 }
+
+const monthLabelFormatter = new Intl.DateTimeFormat("es-PY", {
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+/** "Septiembre 2026" — el mes de un día calendario (ticket del mes). */
+export function formatMonthLabel(dateISO: string): string {
+  const label = monthLabelFormatter
+    .format(new Date(`${dateISO}T00:00:00.000Z`))
+    .replace(" de ", " ");
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+const shortDayFormatter = new Intl.DateTimeFormat("es-PY", {
+  weekday: "short",
+  day: "2-digit",
+  month: "2-digit",
+  timeZone: "UTC",
+});
+
+/** "Sáb 12/09" — un día calendario corto, para un renglón del ticket. */
+export function formatShortDay(dateISO: string): string {
+  const parts = Object.fromEntries(
+    shortDayFormatter
+      .formatToParts(new Date(`${dateISO}T00:00:00.000Z`))
+      .map((part) => [part.type, part.value]),
+  );
+  const weekday = (parts.weekday ?? "").replace(".", "");
+  const dia = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+  return `${dia} ${parts.day}/${parts.month}`;
+}

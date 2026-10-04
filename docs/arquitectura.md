@@ -859,7 +859,7 @@ el minimalismo a propósito. **Sin migraciones.**
   reales en los dos temas con una página temporal, ya borrada. **No se
   probó con sesión iniciada** contra el proyecto real.
 
-### Tema Recibo (en curso: fases 1 a 3 implementadas)
+### Tema Recibo (en curso: fases 1 a 4 implementadas)
 
 Spec 10 (`docs/specs/10-theme-recibo.md`): la app entera pasa al material
 del ticket de papel térmico. Los colores salen del poste: blanco → papel,
@@ -1017,6 +1017,34 @@ azul → tinta, rojo → sello. Referencia visual: Artifact "Clippr en papel".
   desde `/mas` (y uno inválido rechazado), `name`/`phone` → 1 fila,
   `subscription_plan` → 403. Pendiente: lo que sólo se puede en un Android
   real (ver `docs/deuda-tecnica.md`).
+
+**Fase 4: vistas expandidas (2026-10-04).** Sin migraciones.
+
+- **Pantallas vacías:** `BlankTicket` (`src/components/ticket/`, con la
+  fuente compartida en `fonts.ts`) en `/agenda`, `/servicios`,
+  `/productos`, `/equipo` y "Lo que viene" de `/inicio` (`tone="inset"`
+  adentro del cubo). En `/caja` sin movimientos, una línea a máquina
+  adentro del ticket.
+- **Cierres de hoy (dueño):** `getTeamClosuresAction` (cajas cerradas del
+  día por `start_time`, `summarizeCash` por caja) → `TeamClosures` en
+  `OwnerDashboard`: un `TicketReceipt` por caja, en fila con scroll
+  horizontal (`snap-x`, `scroll-px-4`).
+- **Ticket del mes (barbero):** `getMonthTicketAction` (días 1 a 7, resumen
+  del mes anterior con `summarizeMonth` de `src/lib/month-summary.ts`) →
+  `MonthTicketCard` con `monthTicketLines`. "Compartir el mes" usa
+  `ShareTicketScreen`, la pantalla de compartir generalizada
+  (`ShareDayScreen` quedó como envoltorio; la imagen es `ShareImage`).
+- **Tarjeta de sellos (barbero):** `getStampCardAction` (cajas cerradas con
+  cobro desde 90 días antes del 1°) → `stampCardDays` y `streakByDay`
+  (`src/lib/stamp-card.ts`) → `StampCard`: grilla lunes a domingo, sello
+  quieto en cada día trabajado y `BarberPole` chico en los días 7 y 30 de la
+  racha.
+- **Prueba:** Vitest. En el navegador contra la base real con sesión de
+  dueño: "Cierres de hoy" con los cinco cierres del día (TOTAL de cada uno
+  igual a su `final_balance`), pantallas vacías a 360 px en los dos temas, y
+  la tarjeta de sellos y el ticket del mes con los datos del dueño en una
+  página temporal (ya borrada), más una tarjeta con datos falsos para ver el
+  poste del día 30.
 
 ## Modelo de Datos
 

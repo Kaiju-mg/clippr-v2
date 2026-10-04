@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { BarberInlineForm } from "./BarberInlineForm";
 import type { User, UserLevel } from "@/types";
+import { BlankTicket } from "@/components/ticket/BlankTicket";
 
 interface TeamListProps {
   team: User[];
@@ -68,7 +69,7 @@ export function TeamList({ team, isOwner, emails = {} }: TeamListProps) {
       )}
 
       {team.length === 0 && !isCreating ? (
-        <p className="text-muted text-sm">Todavía no hay nadie en el equipo.</p>
+        <BlankTicket text="Todavía no hay nadie en el equipo." />
       ) : (
         <ul className="flex flex-col">
           {team.map((member) => {

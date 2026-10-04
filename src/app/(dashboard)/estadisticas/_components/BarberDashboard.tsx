@@ -3,12 +3,22 @@ import { PerforatedBar } from "@/components/ui/PerforatedBar";
 import { StatTile, Tile } from "@/components/ui/Tile";
 import { LEVEL_LABELS, LEVEL_WINDOW_DAYS } from "@/lib/levels";
 import { formatGuaranies } from "@/lib/utils";
-import type { BarberStats } from "@/actions/stats.actions";
+import type {
+  BarberStats,
+  MonthTicket,
+  StampCard as StampCardData,
+} from "@/actions/stats.actions";
+import { MonthTicketCard } from "./MonthTicketCard";
+import { StampCard } from "./StampCard";
 import { StreakPanel } from "./StreakPanel";
 
 interface BarberDashboardProps {
   stats: BarberStats;
   firstName: string;
+  /** Ticket del mes anterior (fase 4): null fuera de los días 1 a 7. */
+  monthTicket?: MonthTicket | null;
+  /** Tarjeta de sellos del mes (fase 4): null si la consulta falló. */
+  stampCard?: StampCardData | null;
 }
 
 /**
@@ -24,7 +34,12 @@ interface BarberDashboardProps {
  * La barra de progreso es `PerforatedBar` (spec 10): un `div` con `width` en
  * porcentaje, sin librerías de gráficos.
  */
-export function BarberDashboard({ stats, firstName }: BarberDashboardProps) {
+export function BarberDashboard({
+  stats,
+  firstName,
+  monthTicket = null,
+  stampCard = null,
+}: BarberDashboardProps) {
   const { progress } = stats;
   const sinActividad = stats.completedCuts === 0 && stats.income === 0;
   const ventana = `${progress.cuts} ${progress.cuts === 1 ? "corte" : "cortes"} en los últimos ${LEVEL_WINDOW_DAYS} días`;
@@ -43,6 +58,12 @@ export function BarberDashboard({ stats, firstName }: BarberDashboardProps) {
       {/* La racha va primero: es lo que motiva a volver a entrar acá, y el
           poste necesita el ancho completo. */}
       <StreakPanel count={stats.streakCount} status={stats.streakStatus} />
+
+      {/* Justo debajo del poste: los sellos son la racha día por día. */}
+      {stampCard && <StampCard card={stampCard} />}
+
+      {/* Sólo los primeros días del mes: el resumen del mes que terminó. */}
+      {monthTicket && <MonthTicketCard ticket={monthTicket} />}
 
       <div className="grid grid-cols-2 gap-3">
         <StatTile
