@@ -437,9 +437,9 @@ Android). SVG fuente en `design/icono/`.
 (versión `1e37f4e6`, con `npm run deploy` desde la copia local) y probada
 por el usuario en su Android: el ícono y la pantalla de arranque al
 instalar, compartir el día hasta el estado de WhatsApp y el modo avión
-durante un cobro. Los 5 commits de la spec todavía no están en GitHub (ver
-`docs/deuda-tecnica.md`, entrada de Git). Ver `docs/arquitectura.md`
-sección "Tema Recibo".
+durante un cobro. Desde el 2026-10-04 todo está en GitHub y `main` quedó
+adelantada al mismo commit que `feature/deploy-cloudflare` (falta hacerla
+rama por defecto). Ver `docs/arquitectura.md` sección "Tema Recibo".
 
 Pulido después de la spec 10 (2026-10-04, sin migraciones), elegido por el
 usuario en el muestrario "Propuestas de pulido": el dueño tiene en
@@ -451,5 +451,13 @@ queda oficial que los tableros son cubos y los catálogos listas; y
 arrancado sin querer ahora se puede **descartar** desde su tarjeta (con
 confirmación; antes la única salida era cobrarlo y sumaba a la caja, la
 racha y las estadísticas). Ver `docs/decisiones.md` (2026-10-04).
+
+**Antes del piloto** (2026-10-04, `docs/produccion.md`): la base de
+producción sigue siendo la de desarrollo (las `NEXT_PUBLIC_SUPABASE_*` se
+graban al compilar con `.env.local`; los pasos para separarla los hace el
+dueño de la cuenta de Supabase), no hay respaldos, y la CPU medida en
+Cloudflare pasa los 10 ms del plan gratis (12 a 352 ms por pedido, sin
+errores todavía): se recomienda Workers Paid. Última publicación: versión
+`ae2dfaa4` del 2026-10-04.
 
 El resto (nada pendiente del backlog) sigue como estaba.

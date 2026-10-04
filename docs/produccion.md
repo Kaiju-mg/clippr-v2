@@ -11,7 +11,7 @@ apuntan acá.
 |---|---|---|
 | App | Worker `clippr-v2` en Cloudflare (plan gratis), `npm run deploy` desde la copia local | Nada en CI: lo publicado es lo que hay en la máquina de quien publica |
 | Base | **Un solo** proyecto de Supabase (plan gratis) para desarrollo **y** producción | Datos de prueba mezclados, cuentas viejas con `Clippr2026!`, sin respaldos, se pausa tras una semana sin uso |
-| Código | GitHub `Kaiju-mg/clippr-v2`, rama `feature/deploy-cloudflare` | La rama por defecto del repo sigue siendo `feature/InfraestructuraBaseAuthyMulti-Tenant` |
+| Código | GitHub `Kaiju-mg/clippr-v2`: `main` y `feature/deploy-cloudflare` en el mismo commit desde el 2026-10-04 | La rama por defecto del repo sigue siendo `feature/InfraestructuraBaseAuthyMulti-Tenant` |
 
 ## 1. Separar la base de producción
 
@@ -88,8 +88,19 @@ del dueño), `/servicios`, `/productos`. Cada línea trae `cpuTime` (ms). En
 el panel: Workers & Pages → clippr-v2 → Metrics → CPU Time (mirar el
 percentil 99, no el promedio).
 
-La medición del 2026-10-04 está en `docs/deuda-tecnica.md`, en la entrada de
-CPU.
+**Medición del 2026-10-04** (versión `ae2dfaa4`, sin sesión):
+
+| Pedido | CPU en frío | CPU en caliente |
+|---|---|---|
+| `/api/health` | 108–115 ms | 12 ms |
+| `/login` | 164–248 ms | 88 ms |
+| `/registro` | 117–192 ms | 22 ms |
+| `/inicio` (redirect a login) | 249–352 ms | 40 ms |
+
+Todos terminaron `ok`, sin error 1102, pero todos pasan los 10 ms del plan
+gratis: en frío por cargar el bundle de OpenNext, en caliente por el render
+de Next. Las pantallas con sesión iniciada falta medirlas. **Recomendación:**
+Workers Paid (US$5/mes) antes de que haya barberos reales usándola.
 
 ## 4. Git
 
