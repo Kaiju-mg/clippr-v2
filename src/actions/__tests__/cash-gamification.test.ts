@@ -38,6 +38,7 @@ interface BuilderMock {
   in: ReturnType<typeof vi.fn>;
   gte: ReturnType<typeof vi.fn>;
   lt: ReturnType<typeof vi.fn>;
+  lte: ReturnType<typeof vi.fn>;
   limit: ReturnType<typeof vi.fn>;
   order: ReturnType<typeof vi.fn>;
   single: ReturnType<typeof vi.fn>;
@@ -57,6 +58,7 @@ function createBuilder(...results: Result[]): BuilderMock {
     in: vi.fn(() => builder),
     gte: vi.fn(() => builder),
     lt: vi.fn(() => builder),
+    lte: vi.fn(() => builder),
     limit: vi.fn(() => builder),
     order: vi.fn(() => builder),
     single: vi.fn(async () => next()),

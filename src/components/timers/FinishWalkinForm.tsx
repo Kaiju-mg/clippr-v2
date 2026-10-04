@@ -4,6 +4,8 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { OfflineNotice } from "@/components/ui/OfflineNotice";
+import { useOnline } from "@/lib/useOnline";
 import { completeWalkinAction } from "@/actions/walkin.actions";
 import { formatGuaranies } from "@/lib/utils";
 import { SinCajaAviso } from "./SinCajaAviso";
@@ -21,7 +23,8 @@ interface FinishWalkinFormProps {
 /**
  * Aparece al detener un timer (spec 05, sección 2). Sin caja abierta no
  * deja cobrar — muestra el aviso y bloquea el formulario en vez de
- * intentar la acción (sección 6, "Sin Caja Abierta").
+ * intentar la acción (sección 6, "Sin Caja Abierta"). Sin señal tampoco
+ * (spec 10, fase 3): el cobro es un Server Action y fallaría.
  */
 export function FinishWalkinForm({
   timer,
@@ -35,6 +38,7 @@ export function FinishWalkinForm({
   const [clientName, setClientName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const online = useOnline();
 
   if (!cashSessionId) {
     return <SinCajaAviso onCancel={onCancel} />;
@@ -43,6 +47,7 @@ export function FinishWalkinForm({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    if (!online) return;
 
     if (!serviceId) {
       setError("Elegí un servicio.");
@@ -117,6 +122,8 @@ export function FinishWalkinForm({
         </p>
       )}
 
+      {!online && <OfflineNotice pending="se cobró" />}
+
       <div className="flex justify-end gap-2">
         <Button
           type="button"
@@ -126,7 +133,10 @@ export function FinishWalkinForm({
         >
           Cancelar
         </Button>
-        <Button type="submit" disabled={isLoading || services.length === 0}>
+        <Button
+          type="submit"
+          disabled={isLoading || services.length === 0 || !online}
+        >
           {isLoading ? "Cobrando..." : "Cobrar"}
         </Button>
       </div>

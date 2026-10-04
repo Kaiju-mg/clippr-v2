@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { vibrate } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 
 export type StampSize = "sm" | "md";
@@ -26,6 +27,11 @@ interface StampProps {
   delayMs?: number;
   /** Doble borde, como un sello de goma de verdad. */
   double?: boolean;
+  /**
+   * Vibración al caer (spec 10, fase 3): sólo si el sello cae (`animate`),
+   * cuando arranca la caída. Respeta el switch "Vibración" de `/mas`.
+   */
+  haptic?: number | number[];
   className?: string;
 }
 
@@ -43,10 +49,19 @@ export function Stamp({
   animate = false,
   delayMs,
   double = false,
+  haptic,
   className,
 }: StampProps) {
   // `useState` y no la prop directa: así sólo cuenta el valor del montaje.
   const [slam] = useState(animate);
+  const [pulse] = useState(slam ? haptic : undefined);
+  const [pulseDelay] = useState(delayMs ?? 0);
+
+  useEffect(() => {
+    if (pulse === undefined) return;
+    const timer = window.setTimeout(() => vibrate(pulse), pulseDelay);
+    return () => window.clearTimeout(timer);
+  }, [pulse, pulseDelay]);
 
   return (
     <span

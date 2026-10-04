@@ -11,6 +11,7 @@ import {
   formatBusinessDateLabel,
   formatBusinessDateTime,
   formatBusinessTime,
+  formatShareDate,
   formatTicketDateTime,
   isValidDateISO,
   isValidTime,
@@ -123,6 +124,18 @@ describe("formatTicketDateTime", () => {
   it("la hora va en 24 horas y con cero adelante", () => {
     expect(formatTicketDateTime("2026-10-05T12:07:00.000Z")).toBe(
       "Lun 05/10/2026 · 09:07",
+    );
+  });
+});
+
+describe("formatShareDate", () => {
+  it("día completo y fecha del negocio, sin hora (la imagen es del día)", () => {
+    // 00:05 UTC del 4 de octubre todavía es el sábado 3 en Paraguay.
+    expect(formatShareDate("2026-10-04T00:05:00.000Z")).toBe(
+      "Sábado 03/10/2026",
+    );
+    expect(formatShareDate("2026-10-04T15:00:00.000Z")).toBe(
+      "Domingo 04/10/2026",
     );
   });
 });

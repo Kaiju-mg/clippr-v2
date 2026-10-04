@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { Stamp } from "../Stamp";
 
@@ -53,5 +53,64 @@ describe("Stamp", () => {
     expect(screen.getByText("A")).toHaveClass("-rotate-6");
     rerender(<Stamp size="md">A</Stamp>);
     expect(screen.getByText("A")).toHaveClass("-rotate-8");
+  });
+});
+
+describe("Stamp — vibración al caer (fase 3)", () => {
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "vibrate");
+    vi.useRealTimers();
+  });
+
+  function stubVibrate() {
+    const fn = vi.fn(() => true);
+    Object.defineProperty(navigator, "vibrate", { configurable: true, value: fn });
+    return fn;
+  }
+
+  it("vibra una vez cuando el sello cae, después de su demora", () => {
+    vi.useFakeTimers();
+    const fn = stubVibrate();
+    render(
+      <Stamp animate haptic={30} delayMs={200}>
+        Cobrado
+      </Stamp>,
+    );
+    expect(fn).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(200);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(fn).toHaveBeenCalledWith(30);
+  });
+
+  it("un sello quieto (ya venía cobrado) no vibra", () => {
+    vi.useFakeTimers();
+    const fn = stubVibrate();
+    render(<Stamp haptic={30}>Cobrado</Stamp>);
+    vi.advanceTimersByTime(1000);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("si se desmonta antes de caer, no vibra", () => {
+    vi.useFakeTimers();
+    const fn = stubVibrate();
+    const { unmount } = render(
+      <Stamp animate haptic={30} delayMs={500}>
+        Cobrado
+      </Stamp>,
+    );
+    unmount();
+    vi.advanceTimersByTime(1000);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("sin navigator.vibrate cae igual, sin romper", () => {
+    vi.useFakeTimers();
+    render(
+      <Stamp animate haptic={30}>
+        Cobrado
+      </Stamp>,
+    );
+    expect(() => vi.advanceTimersByTime(100)).not.toThrow();
+    expect(screen.getByText("Cobrado")).toHaveClass("animate-stamp-slam");
   });
 });

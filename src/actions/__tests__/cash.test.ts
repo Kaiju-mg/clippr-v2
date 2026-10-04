@@ -42,6 +42,7 @@ interface QueryBuilderMock<T> {
   in: ReturnType<typeof vi.fn>;
   gte: ReturnType<typeof vi.fn>;
   lt: ReturnType<typeof vi.fn>;
+  lte: ReturnType<typeof vi.fn>;
   limit: ReturnType<typeof vi.fn>;
   order: ReturnType<typeof vi.fn>;
   single: ReturnType<typeof vi.fn>;
@@ -65,6 +66,7 @@ function createBuilder<T>(result: MockResult<T>): QueryBuilderMock<T> {
     in: vi.fn(() => builder),
     gte: vi.fn(() => builder),
     lt: vi.fn(() => builder),
+    lte: vi.fn(() => builder),
     limit: vi.fn(() => builder),
     order: vi.fn(() => builder),
     single: vi.fn(async () => result),
@@ -129,8 +131,15 @@ function mockSupabase(
       error: null,
     } as unknown as MockResult<unknown>).then(onfulfilled);
 
+  // La barbería de "Compartir el día" (spec 10, fase 3); acá no se mira.
+  const barbershopsBuilder = createBuilder<unknown>({
+    data: { name: "El Poste", phone: null },
+    error: null,
+  });
+
   const from = vi.fn((table: string) => {
     if (table === "users") return usersBuilder;
+    if (table === "barbershops") return barbershopsBuilder;
     if (table === "transactions") return transactionsBuilder;
     if (table === "appointments") return appointmentsBuilder;
     return cashSessionsBuilder;

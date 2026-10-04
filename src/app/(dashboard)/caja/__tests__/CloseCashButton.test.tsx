@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { setOnline } from "@/test/network";
 import { CloseCashButton } from "../_components/CloseCashButton";
 import { useCloseCelebration } from "@/store/closeCelebrationStore";
 import { summarizeCash } from "@/lib/cash-summary";
@@ -32,6 +33,12 @@ const SUMMARY = summarizeCash(50000, [
   { type: "income", category: "service", amount: 480000 },
 ]);
 
+const SHARE = {
+  barbershopName: "El Poste",
+  phone: "0981 123 456",
+  cutsByService: [{ name: "Corte clásico", count: 1 }],
+};
+
 async function cerrar() {
   render(<CloseCashButton sessionId="cs1" />);
   fireEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
@@ -53,6 +60,7 @@ describe("CloseCashButton — el ticket del cierre", () => {
         streak: { previous: 12, current: 13 },
         summary: SUMMARY,
         barberName: "Eduardo",
+        share: SHARE,
       },
     });
 
@@ -63,6 +71,7 @@ describe("CloseCashButton — el ticket del cierre", () => {
       closedAt: CERRADA.end_time,
       barberName: "Eduardo",
       streak: { previous: 12, current: 13 },
+      share: SHARE,
     });
   });
 
@@ -74,6 +83,7 @@ describe("CloseCashButton — el ticket del cierre", () => {
         streak: { previous: 13, current: 13 },
         summary: SUMMARY,
         barberName: null,
+        share: null,
       },
     });
 
@@ -93,6 +103,7 @@ describe("CloseCashButton — el ticket del cierre", () => {
         streak: null,
         summary: SUMMARY,
         barberName: "Eduardo",
+        share: null,
       },
     });
 
@@ -116,6 +127,30 @@ describe("CloseCashButton — el ticket del cierre", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Caja no encontrada o ya cerrada.",
     );
+    expect(useCloseCelebration.getState().celebration).toBeNull();
+  });
+});
+
+describe("CloseCashButton — sin señal (spec 10, fase 3)", () => {
+  it("no deja empezar el cierre y dice que la caja sigue abierta", () => {
+    render(<CloseCashButton sessionId="cs1" />);
+    setOnline(false);
+
+    expect(screen.getByRole("button", { name: "Cerrar caja" })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Sin señal · todavía no se cerró la caja",
+    );
+  });
+
+  it("si la señal se cae con la confirmación abierta, tampoco cierra", () => {
+    render(<CloseCashButton sessionId="cs1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
+    setOnline(false);
+
+    const confirmar = screen.getByRole("button", { name: "Sí, cerrar caja" });
+    expect(confirmar).toBeDisabled();
+    fireEvent.click(confirmar);
+    expect(closeCashSessionAction).not.toHaveBeenCalled();
     expect(useCloseCelebration.getState().celebration).toBeNull();
   });
 });

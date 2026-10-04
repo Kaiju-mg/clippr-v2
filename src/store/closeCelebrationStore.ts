@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { StreakChange } from "@/actions/cash.actions";
 import type { CashSummary } from "@/lib/cash-summary";
+import type { ShareDay } from "@/lib/share-day";
 
 /** Todo lo que imprime el ticket del cierre. Viene entero del servidor. */
 export interface CloseCelebration {
@@ -14,6 +15,11 @@ export interface CloseCelebration {
    * ticket sale igual, sin sello.
    */
   streak: StreakChange | null;
+  /**
+   * Lo de la imagen "Compartir el día" (fase 3). null: el ticket sale sin el
+   * botón "Compartir".
+   */
+  share: ShareDay | null;
 }
 
 interface CloseCelebrationState {

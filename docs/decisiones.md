@@ -1513,3 +1513,88 @@ de claro, y además lleva a donde se resuelve.
 Costo: suma un cubo arriba de "Iniciar corte" mientras la caja está cerrada.
 El bloqueo al cobrar sin caja (`SinCajaAviso`, en el formulario de cierre)
 sigue en `text-danger`, porque ahí sí es un intento de cobro rechazado.
+
+## 2026-10-04 — "Sin señal" no promete guardar
+Elegido (spec 10, fase 3, paso A): sin red, el cobro (`/inicio`, `/agenda`)
+y el cierre de caja se deshabilitan con "Sin señal · todavía no se cobró" (o
+"…no se cerró la caja") en `font-mono`. El estado de red es `useOnline`
+(`navigator.onLine` + eventos `online`/`offline`, leído con
+`useSyncExternalStore`). Los temporizadores siguen andando (regla 4).
+Descartado: "Sin señal · se guarda cuando vuelva", y dejar que el Server
+Action falle al tocar.
+Por qué: hoy no existe cola offline. Cobrar y cerrar son Server Actions; sin
+red fallan. Prometer que se guarda sería mentirle al barbero con plata en la
+mano. Y dejar que falle en `/agenda` era peor: el sello optimista caía y la
+fila volvía atrás sola.
+Costo: con la red caída no se puede cobrar hasta que vuelva. El paso B (cola
+de cobros con id del cliente para no cobrar dos veces) es una spec aparte:
+ver `docs/deuda-tecnica.md`. `navigator.onLine === true` no garantiza
+internet (sólo una interfaz conectada); si la red "está" pero no anda, el
+cobro falla como antes, con su mensaje de error.
+
+## 2026-10-04 — El `update` de `barbershops`, sólo para el dueño
+Elegido: migración `20261004000000_barbershops_phone_owner_update.sql`
+agrega `barbershops.phone` y reemplaza `barbershops_update_own` por
+`barbershops_update_owner` (fila propia **y** `current_user_role() =
+'owner'`) + `revoke update` y `grant update (name, phone)` a
+`authenticated`. Mismo patrón que `users` en la spec 09.
+Descartado: dejar la policy abierta y validar el rol sólo en el Server
+Action; una policy sola sin grants por columna.
+Por qué: la policy de la spec 01 dejaba a **cualquier integrante** (también
+un barbero) cambiar `subscription_plan` desde la consola. Una policy no
+puede mirar qué columna cambió, así que el plan queda afuera del grant: ni el
+dueño se lo puede cambiar, eso llega con la facturación por `service_role`.
+Verificado contra la base real con la sesión de un barbero: `phone` y
+`name` → 0 filas, `subscription_plan` → 403 `permission denied`.
+Costo: cualquier edición futura de otra columna de `barbershops` necesita su
+propio `grant update`.
+
+## 2026-10-04 — Los cortes por servicio salen de `appointments`, sin migración
+Elegido: "Corte clásico x5" en la imagen de compartir se arma en
+`closeCashSessionAction` (`readShareDay`) con los turnos `completed` del
+barbero cuyo `end_time` cae en la ventana de la caja, agrupados por
+`services.name` (`countCutsByService`).
+Descartado: una columna `transactions.appointment_id`/`service_id`
+(migración y backfill), y partir la descripción "Corte: X" de la
+`transaction`.
+Por qué: los dos RPC de cobro ponen `end_time = now()` en la misma
+transacción que insertan el cobro, y sólo con la caja abierta: los turnos de
+esa ventana son exactamente los cortes cobrados de la caja. La descripción
+es texto para mostrar, no un dato para agrupar.
+Costo: depende de esa propiedad de los RPC; si algún día se puede completar
+un turno sin cobrarlo, o cobrarlo fuera de la caja abierta, hay que pasar a
+la columna. `user_id` se filtra a mano (la RLS de `appointments` ya no acota
+al dueño, spec 08). Si la consulta falla, `share` es null y el cierre sale
+sin "Compartir".
+
+## 2026-10-04 — La imagen del día se arma con `html-to-image` y sólo dos fuentes
+Elegido: la imagen 1080×1920 es un componente (`ShareDayImage`) que reusa
+`TicketReceipt` y `StreakStamp`; la vista previa es el mismo nodo achicado
+con `transform`, y `html-to-image` (cargado con `import()` al tocar
+"Compartir imagen") lo convierte en PNG en el teléfono. Se le pasa
+`fontEmbedCSS` armado a mano (`share-fonts.ts`): sólo Inter y Courier Prime,
+subset latino. Los colores del papel van fijos en la raíz de la imagen
+(regla 4). El TOTAL con "Mostrar montos" es `summary.finalBalance`, el
+mismo renglón del ticket del cierre (así está en el muestrario).
+Descartado: dibujar con `<canvas>` a mano (duplicaría el ticket y sus
+fuentes), generar la imagen en el servidor (no anda sin señal), y dejar que
+`html-to-image` incruste todas las fuentes de la página (~50 `@font-face`,
+~40 archivos).
+Por qué: lo que se ve en la vista previa es exactamente lo que se publica, y
+el ticket tiene una sola implementación.
+Costo: una dependencia nueva (`html-to-image`, MIT, sin dependencias, fuera
+del bundle inicial). `html-to-image` espera un `requestAnimationFrame`: con
+la pestaña oculta el navegador lo pausa y la imagen no termina hasta volver
+(en el navegador automatizado parecía "colgada"; con la app en pantalla no
+pasa). El tiempo en un celular de gama media no está medido.
+
+## 2026-10-04 — La vibración es por dispositivo
+Elegido: `navigator.vibrate` con un pulso de 30 ms cuando cae COBRADO
+(`<Stamp haptic>`, sólo si el sello cae, no si ya venía cobrado) y
+`[40,60,40,60,40]` al imprimirse el ticket del cierre (una vez por cierre;
+volver de "Compartir" no reimprime ni vibra). Switch "Vibración" en `/mas`,
+en `localStorage` (`clippr-vibracion`), prendido por defecto.
+Descartado: guardar la preferencia en la base, y sonidos (no se acordaron).
+Por qué: depende del teléfono, no de la persona (en iPhone no hay
+`navigator.vibrate`: no hace nada y el switch lo avisa).
+Costo: la preferencia no viaja entre dispositivos.

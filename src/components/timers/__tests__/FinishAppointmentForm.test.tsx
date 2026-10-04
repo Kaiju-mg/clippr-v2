@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { setOnline } from "@/test/network";
 import { FinishAppointmentForm } from "../FinishAppointmentForm";
 import type { Service } from "@/types";
 import type { Timer } from "@/store/timerStore";
@@ -139,5 +140,34 @@ describe("FinishAppointmentForm", () => {
 
     await waitFor(() => expect(props.onDone).toHaveBeenCalled());
     expect(completeScheduledAppointmentAction).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("FinishAppointmentForm — sin señal (spec 10, fase 3)", () => {
+  it("deshabilita 'Cobrar', no llama al servidor y lo dice en mono", () => {
+    setup();
+    setOnline(false);
+
+    const cobrar = screen.getByRole("button", { name: "Cobrar" });
+    expect(cobrar).toBeDisabled();
+    fireEvent.click(cobrar);
+    expect(completeScheduledAppointmentAction).not.toHaveBeenCalled();
+    const aviso = screen.getByRole("status");
+    expect(aviso).toHaveTextContent("Sin señal · todavía no se cobró");
+    expect(aviso).toHaveClass("font-mono");
+  });
+
+  it("con la señal de vuelta, cobra", async () => {
+    vi.mocked(completeScheduledAppointmentAction).mockResolvedValue({
+      success: true,
+      data: {} as never,
+    });
+    const props = setup();
+    setOnline(false);
+    setOnline(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cobrar" }));
+
+    await waitFor(() => expect(props.onDone).toHaveBeenCalled());
   });
 });

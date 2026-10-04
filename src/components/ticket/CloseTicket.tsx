@@ -1,24 +1,16 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { Stamp } from "@/components/ui/Stamp";
+import { useEffect, useRef, useState } from "react";
+import { ShareDayScreen } from "@/components/share/ShareDayScreen";
+import { PATRON_IMPRESORA, vibrate } from "@/lib/haptics";
 import { useCloseCelebration } from "@/store/closeCelebrationStore";
 import { closeTicketLines } from "./closeTicketLines";
+import { StreakStamp } from "./StreakStamp";
 import { TicketReceipt } from "./TicketReceipt";
 
 /** Cuándo cae el sello y cuándo aparecen los botones (después de imprimir). */
 export const SELLO_DELAY_MS = 2050;
 const BOTONES_DELAY_MS = 2500;
-
-/** Poste chico de un solo color, dibujado con rayas en la tinta del sello. */
-function InkPole() {
-  return (
-    <span
-      aria-hidden="true"
-      className="h-[30px] w-[9px] flex-none rounded-[2px] border-[1.5px] border-current bg-[repeating-linear-gradient(-45deg,currentColor_0_3px,transparent_3px_6px)]"
-    />
-  );
-}
 
 /**
  * El cierre de caja (spec 10, fase 2): el fondo se oscurece, aparece la boca
@@ -29,52 +21,64 @@ function InkPole() {
  *
  * Todos los números vienen del servidor (`closeCashSessionAction` →
  * `summary`). Con "reducir movimiento", el ticket aparece entero y el sello
- * aparece sin caer. "Compartir" llega con la fase 3.
+ * aparece sin caer.
+ *
+ * "Compartir" (fase 3) abre "Compartir el día" **encima** del ticket, que
+ * queda montado abajo: al volver no se reimprime. Sólo aparece si el
+ * servidor pudo armar los datos de la imagen (`share`).
  */
 export function CloseTicket() {
   const celebration = useCloseCelebration((state) => state.celebration);
   const dismiss = useCloseCelebration((state) => state.dismiss);
   const doneRef = useRef<HTMLButtonElement>(null);
+  const [sharing, setSharing] = useState(false);
+  // Cada cierre arranca en el ticket, no en la pantalla de compartir del
+  // cierre anterior (ajuste de estado al cambiar la prop, sin efecto).
+  const [shownFor, setShownFor] = useState(celebration);
+  if (shownFor !== celebration) {
+    setShownFor(celebration);
+    setSharing(false);
+  }
+
+  // La impresora vibra mientras salen los renglones (fase 3). Una vez por
+  // cierre: volver de "Compartir" no reimprime, así que tampoco vibra.
+  useEffect(() => {
+    if (celebration) vibrate(PATRON_IMPRESORA);
+  }, [celebration]);
 
   useEffect(() => {
-    if (!celebration) return;
+    if (!celebration || sharing) return;
     doneRef.current?.focus();
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") dismiss();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [celebration, dismiss]);
+  }, [celebration, sharing, dismiss]);
+
+  useEffect(() => {
+    if (!sharing) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setSharing(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sharing]);
 
   if (!celebration) return null;
 
-  const { summary, closedAt, barberName, streak } = celebration;
+  const { summary, closedAt, barberName, streak, share } = celebration;
   const lines = closeTicketLines(summary, { closedAt, barberName });
 
   const footer = streak && streak.current > 0 && (
     <>
       <hr className="border-paper-rule my-[5px] border-0 border-t border-dashed" />
       <div className="flex justify-center pt-1.5 pb-1">
-        <Stamp
-          size="md"
-          double
+        <StreakStamp
+          days={streak.current}
           animate
           delayMs={SELLO_DELAY_MS}
-          className="font-sans opacity-95 mix-blend-multiply"
-        >
-          <InkPole />
-          <span className="text-[11px] leading-[1.05] tracking-[0.12em]">
-            {/* Los espacios explícitos son para el lector de pantalla: sin
-                ellos lee "13DÍASDE RACHA". */}
-            <b className="mr-1 align-[-3px] text-[22px] tracking-[-0.02em]">
-              {streak.current}
-            </b>{" "}
-            {streak.current === 1 ? "DÍA" : "DÍAS"}{" "}
-            <small className="block text-[9px] tracking-[0.18em]">
-              DE RACHA
-            </small>
-          </span>
-        </Stamp>
+        />
       </div>
       <p className="m-0 text-center">Mañana va el {streak.current + 1}.</p>
     </>
@@ -109,6 +113,15 @@ export function CloseTicket() {
         className="animate-ticket-rise flex w-full max-w-[252px] gap-2 motion-reduce:animate-none"
         style={{ animationDelay: `${BOTONES_DELAY_MS}ms` }}
       >
+        {share && (
+          <button
+            type="button"
+            onClick={() => setSharing(true)}
+            className="text-paper flex-1 rounded-[14px] border border-[rgba(255,253,246,0.35)] bg-transparent p-3 text-sm font-semibold transition-transform active:scale-95"
+          >
+            Compartir
+          </button>
+        )}
         <button
           ref={doneRef}
           type="button"
@@ -118,6 +131,17 @@ export function CloseTicket() {
           Listo
         </button>
       </div>
+
+      {sharing && share && (
+        <ShareDayScreen
+          summary={summary}
+          share={share}
+          closedAt={closedAt}
+          barberName={barberName}
+          streakDays={streak?.current ?? null}
+          onBack={() => setSharing(false)}
+        />
+      )}
     </div>
   );
 }

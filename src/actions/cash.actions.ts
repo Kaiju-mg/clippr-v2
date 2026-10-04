@@ -5,6 +5,11 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { businessDateOf, businessRangeUtc, shiftDateISO } from "@/lib/dates";
 import { summarizeCash, type CashSummary } from "@/lib/cash-summary";
+import {
+  countCutsByService,
+  type CutRow,
+  type ShareDay,
+} from "@/lib/share-day";
 import { LEVEL_WINDOW_DAYS, levelForCuts } from "@/lib/levels";
 import { nextStreakCount } from "@/lib/streaks";
 import {
@@ -42,6 +47,11 @@ export interface CloseCashResult {
   summary: CashSummary;
   /** Nombre del barbero para el ticket; null si no se pudo leer. */
   barberName: string | null;
+  /**
+   * La versión cliente del ticket, para "Compartir el día" (spec 10, fase
+   * 3). null si no se pudo leer: el cierre sale igual, sin "Compartir".
+   */
+  share: ShareDay | null;
 }
 
 const MENSAJE_ERROR_GENERICO = "Algo salió mal. Intentá de nuevo.";
@@ -532,9 +542,10 @@ export async function closeCashSessionAction(
 
   // Gamificación después del cierre, nunca antes: si la racha fallara, la
   // caja ya está cerrada con su saldo correcto.
-  const [streak, barberName] = await Promise.all([
+  const [streak, barberName, share] = await Promise.all([
     updateStreakAndLevel(supabase, closed, summary.income),
     readBarberName(supabase, closed.user_id),
+    readShareDay(supabase, closed),
   ]);
 
   revalidatePath("/caja");
@@ -542,8 +553,67 @@ export async function closeCashSessionAction(
   revalidatePath("/estadisticas");
   return {
     success: true,
-    data: { session: closed, streak, summary, barberName },
+    data: { session: closed, streak, summary, barberName, share },
   };
+}
+
+/**
+ * Lo que necesita la imagen de "Compartir el día" (spec 10, fase 3): la
+ * barbería con su teléfono y los cortes de la caja por servicio.
+ *
+ * Los cortes salen de `appointments` y no de `transactions` (que no guarda
+ * el servicio): son los turnos `completed` del barbero con `end_time` dentro
+ * de la ventana de la caja. Coinciden uno a uno con los cobros de corte
+ * porque los dos RPC de cobro (`complete_walkin_and_charge`,
+ * `complete_appointment_and_charge`) ponen `end_time = now()` en la misma
+ * transacción que insertan la `transaction`, y sólo con la caja abierta.
+ *
+ * `user_id` se filtra a mano: desde la spec 08 la RLS de `appointments` deja
+ * al dueño ver los turnos de todo su equipo. Si algo falla, null: el cierre
+ * no se cae por la imagen.
+ */
+async function readShareDay(
+  supabase: SupabaseServerClient,
+  session: CashSession,
+): Promise<ShareDay | null> {
+  if (!session.end_time) return null;
+
+  try {
+    const [cuts, barbershop] = await Promise.all([
+      supabase
+        .from("appointments")
+        .select("services(name)")
+        .eq("user_id", session.user_id)
+        .eq("status", "completed")
+        .gte("end_time", session.start_time)
+        .lte("end_time", session.end_time),
+      supabase
+        .from("barbershops")
+        .select("name, phone")
+        .eq("id", session.barbershop_id)
+        .maybeSingle<{ name: string; phone: string | null }>(),
+    ]);
+
+    if (cuts.error || barbershop.error || !barbershop.data) {
+      console.error(
+        "readShareDay:",
+        cuts.error?.message ?? barbershop.error?.message ?? "sin barbería",
+      );
+      return null;
+    }
+
+    return {
+      barbershopName: barbershop.data.name,
+      phone: barbershop.data.phone ?? null,
+      cutsByService: countCutsByService(
+        (cuts.data ?? []) as unknown as CutRow[],
+      ),
+    };
+  } catch (error) {
+    // La caja ya está cerrada: una excepción acá no puede tumbar el cierre.
+    console.error("readShareDay:", error);
+    return null;
+  }
 }
 
 /**

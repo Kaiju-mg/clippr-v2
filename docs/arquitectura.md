@@ -859,7 +859,7 @@ el minimalismo a propósito. **Sin migraciones.**
   reales en los dos temas con una página temporal, ya borrada. **No se
   probó con sesión iniciada** contra el proyecto real.
 
-### Tema Recibo (en curso: fases 1 y 2 implementadas)
+### Tema Recibo (en curso: fases 1 a 3 implementadas)
 
 Spec 10 (`docs/specs/10-theme-recibo.md`): la app entera pasa al material
 del ticket de papel térmico. Los colores salen del poste: blanco → papel,
@@ -973,6 +973,50 @@ azul → tinta, rojo → sello. Referencia visual: Artifact "Clippr en papel".
   ticket con "Otros ingresos" y `final_balance` 17.000, y la racha queda en
   2. Con sesión de barbero, `/estadisticas`: racha en `--stamp` y barra de
   nivel perforada. Sin errores de consola.
+
+**Fase 3: compartir, sin señal y vibración (2026-10-04).** Una migración
+(`20261004000000_barbershops_phone_owner_update.sql`, aplicada).
+
+- **Teléfono de la barbería:** `barbershops.phone` (nullable, con `check`
+  de formato). El dueño lo edita en línea en la tarjeta de `/mas`
+  (`BarbershopPhone` → `updateBarbershopPhoneAction`, normalizado con
+  `src/lib/phone.ts`). En la misma migración el `update` de `barbershops`
+  quedó sólo para el dueño (`barbershops_update_owner` + `grant update
+  (name, phone)`): nadie se cambia `subscription_plan` desde la consola.
+- **Datos de la imagen:** `closeCashSessionAction` devuelve además
+  `share: { barbershopName, phone, cutsByService } | null`
+  (`readShareDay`): los cortes por servicio salen de los `appointments`
+  `completed` del barbero dentro de la ventana de la caja
+  (`countCutsByService`, `src/lib/share-day.ts`). Si falla, `share` es null
+  y el ticket sale sin "Compartir"; el cierre nunca se cae por esto.
+- **Compartir el día:** "Compartir" (contorno papel) junto a "Listo" en
+  `CloseTicket` abre `ShareDayScreen` **encima** del ticket (al volver no se
+  reimprime; Escape vuelve al ticket). Vista previa 9:16 de `ShareDayImage`
+  (1080×1920, fondo carbón con rayas del poste, colores del papel fijos),
+  renglones de `shareTicketLines` (barbería, día, barbero, `Servicio xN`,
+  CORTES, sello de racha con `StreakStamp`, "Turnos: …", "Hecho con
+  Clippr"). "Mostrar montos" arranca apagado cada vez y sólo agrega el
+  TOTAL (`summary.finalBalance`). El PNG lo arma `html-to-image` en el
+  teléfono con sólo dos fuentes (`share-fonts.ts`) y se comparte con
+  `shareOrDownloadImage` (Web Share nivel 2; si no, descarga
+  `clippr-AAAA-MM-DD.png`).
+- **Sin señal (paso A):** `useOnline` (`src/lib/useOnline.ts`) +
+  `OfflineNotice`. Deshabilitan el cobro en `FinishWalkinForm`,
+  `FinishAppointmentForm` y `AppointmentRow`, y el cierre en
+  `CloseCashButton`. Los temporizadores no dependen de la red.
+- **Vibración:** `src/lib/haptics.ts` (`vibrate`, preferencia en
+  `localStorage`), `<Stamp haptic>` en COBRADO, patrón de impresora en
+  `CloseTicket`, `VibrationSwitch` en `/mas`.
+- **Prueba:** Vitest (lint, typecheck, build). En el navegador contra la
+  base real, con sesión de barbero: RLS de `barbershops` (`phone`/`name` →
+  0 filas, `subscription_plan` → 403); sin señal simulado (cobro y cierre
+  bloqueados con el aviso, cronómetro corriendo, cobro normal al volver);
+  dos cierres con "Compartir": vista previa sin montos, con montos, día sin
+  cortes, tema claro (la imagen no cambia) y el PNG real de 1080×1920
+  interceptando `navigator.share`. Con sesión de dueño: teléfono guardado
+  desde `/mas` (y uno inválido rechazado), `name`/`phone` → 1 fila,
+  `subscription_plan` → 403. Pendiente: lo que sólo se puede en un Android
+  real (ver `docs/deuda-tecnica.md`).
 
 ## Modelo de Datos
 

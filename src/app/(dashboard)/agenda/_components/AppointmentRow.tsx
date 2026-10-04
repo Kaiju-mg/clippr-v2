@@ -3,7 +3,10 @@
 import { useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { OfflineNotice } from "@/components/ui/OfflineNotice";
 import { Stamp } from "@/components/ui/Stamp";
+import { useOnline } from "@/lib/useOnline";
+import { PULSO_SELLO } from "@/lib/haptics";
 import {
   completeScheduledAppointmentAction,
   cancelAppointmentAction,
@@ -50,6 +53,10 @@ const PILL =
  * atenúa (el sello no); lo cancelado va tachado y atenuado, sin sello. El
  * sello cae sólo si el turno se cobra mientras se mira la pantalla: los que
  * ya venían cobrados al cargar aparecen sellados, quietos.
+ *
+ * Sin señal (spec 10, fase 3), "Cobrar" se deshabilita con "Sin señal ·
+ * todavía no se cobró": sin eso, el sello optimista caía y la fila volvía
+ * atrás sola al fallar el Server Action.
  */
 export function AppointmentRow({
   appointment,
@@ -67,9 +74,10 @@ export function AppointmentRow({
   );
   // El estado con el que se montó la fila: decide si el sello cae o no.
   const [statusAlCargar] = useState(appointment.status);
+  const online = useOnline();
 
   function handleComplete() {
-    if (!cashSessionId) return;
+    if (!cashSessionId || !online) return;
     setError(null);
 
     startTransition(async () => {
@@ -130,7 +138,12 @@ export function AppointmentRow({
             {formatGuaranies(servicePrice)}
           </span>
           {cobrado && (
-            <Stamp animate={statusAlCargar === "scheduled"}>Cobrado</Stamp>
+            <Stamp
+              animate={statusAlCargar === "scheduled"}
+              haptic={PULSO_SELLO}
+            >
+              Cobrado
+            </Stamp>
           )}
           {cancelado && <span className="text-muted text-xs">Cancelado</span>}
         </div>
@@ -154,12 +167,18 @@ export function AppointmentRow({
             <button
               type="button"
               onClick={handleComplete}
-              disabled={isPending || !cashSessionId}
+              disabled={isPending || !cashSessionId || !online}
               className={`${PILL} border-line bg-background text-foreground border`}
             >
               Cobrar
             </button>
           )}
+        </div>
+      )}
+
+      {isScheduled && !esDiaFuturo && cashSessionId && !online && (
+        <div className="flex justify-end">
+          <OfflineNotice pending="se cobró" />
         </div>
       )}
 

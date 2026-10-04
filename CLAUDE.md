@@ -61,7 +61,8 @@ src/app/                 rutas (App Router)
                           estadisticas
 src/components/          ui/ (BottomNav, Tile — el cubo bento, ThemeSwitch, Input/Select,
                           BarberPole, Stamp, PerforatedBar) · forms/ · timers/ ·
-                          ticket/ (TicketReceipt y el ticket del cierre)
+                          ticket/ (TicketReceipt y el ticket del cierre) · share/
+                          ("Compartir el día": ShareDayScreen, ShareDayImage)
 src/lib/supabase/        client.ts (browser)  ·  server.ts (Server Components/Actions/Route Handlers)
 src/lib/utils.ts         formatGuaranies, formatAmount, cn
 src/lib/cash-summary.ts  resumen de una caja (saldo, ticket del cierre) — pura, la usa el servidor
@@ -384,7 +385,34 @@ dos temas (pantallas reales con sesión de dueño; ticket y animación con una
 página temporal). El 2026-10-04 se probó en el navegador contra la base
 real: dos cierres del mismo día (ticket, sello de racha 1 → 2 sólo en el
 primero, TOTAL = `final_balance`, `category` de cada cobro) y la vista del
-barbero de `/estadisticas`. **Pendiente:** las fases 3 a 5. Ver
-`docs/arquitectura.md` sección "Tema Recibo".
+barbero de `/estadisticas`.
+
+**Fase 3 implementada** (2026-10-04): compartir el día, sin señal y
+vibración. Una migración, **aplicada**
+(`20261004000000_barbershops_phone_owner_update.sql`): `barbershops.phone`
+(lo edita el dueño en la tarjeta de `/mas`) y el `update` de `barbershops`
+sólo para el dueño, con `grant update (name, phone)` (nadie se cambia
+`subscription_plan`). Lo demás sin migraciones:
+
+- **Compartir el día:** "Compartir" en el ticket del cierre abre
+  `ShareDayScreen` (vista previa 9:16, "Mostrar montos" apagado cada vez).
+  El PNG de 1080×1920 lo arma `html-to-image` en el teléfono (dependencia
+  nueva, `import()` al compartir, sólo dos fuentes: `src/lib/share-fonts.ts`)
+  y sale por Web Share o se descarga. `closeCashSessionAction` devuelve
+  `share` con los cortes por servicio, sacados de `appointments` en la
+  ventana de la caja.
+- **Sin señal (paso A):** `useOnline` bloquea cobrar y cerrar con "Sin señal ·
+  todavía no se cobró". No hay cola offline (paso B, ver
+  `docs/deuda-tecnica.md`).
+- **Vibración:** `src/lib/haptics.ts`, switch en `/mas` (`localStorage`).
+
+Verificado: lint, typecheck, Vitest, build, y en el navegador contra la base
+real con sesión de barbero (RLS de `barbershops`, sin señal simulado, dos
+cierres con "Compartir" y el PNG real) y de dueño (teléfono desde `/mas`;
+`name`/`phone` sí, `subscription_plan` 403). Ojo: `html-to-image` espera un
+`requestAnimationFrame`, así que con la pestaña oculta la imagen no termina
+(en el navegador automatizado parece colgada). **Pendiente:** compartir hasta
+WhatsApp y el modo avión en un Android real (sobre el Worker, necesita
+HTTPS), y las fases 4 y 5. Ver `docs/arquitectura.md` sección "Tema Recibo".
 
 El resto (nada pendiente del backlog) sigue como estaba.

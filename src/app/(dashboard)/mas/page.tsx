@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { ChevronRight } from "lucide-react";
 import { logoutAction } from "@/actions/auth.actions";
 import { ThemeSwitch } from "@/components/ui/ThemeSwitch";
+import { VibrationSwitch } from "@/components/ui/VibrationSwitch";
 import { createClient } from "@/lib/supabase/server";
 import { parseTheme, THEME_COOKIE } from "@/lib/theme";
 import type { SubscriptionPlan, UserRole } from "@/types";
@@ -23,7 +24,11 @@ const LINKS = [
 interface PerfilConBarberia {
   name: string;
   role: UserRole;
-  barbershops: { name: string; subscription_plan: SubscriptionPlan } | null;
+  barbershops: {
+    name: string;
+    subscription_plan: SubscriptionPlan;
+    phone: string | null;
+  } | null;
 }
 
 /**
@@ -40,7 +45,7 @@ async function perfilConBarberia(): Promise<PerfilConBarberia | null> {
 
   const { data, error } = await supabase
     .from("users")
-    .select("name, role, barbershops(name, subscription_plan)")
+    .select("name, role, barbershops(name, subscription_plan, phone)")
     .eq("auth_id", user.id)
     .maybeSingle<PerfilConBarberia>();
 
@@ -66,11 +71,13 @@ export default async function MasPage() {
           userName={perfil.name}
           role={perfil.role}
           plan={perfil.barbershops.subscription_plan ?? null}
+          phone={perfil.barbershops.phone ?? null}
         />
       )}
 
-      <div className="border-line border-b">
+      <div className="divide-line border-line flex flex-col divide-y border-b">
         <ThemeSwitch initialTheme={theme} />
+        <VibrationSwitch />
       </div>
 
       <ul className="flex flex-col">

@@ -221,3 +221,27 @@ export function formatTicketDateTime(instantISO: string): string {
   const dia = weekday.charAt(0).toUpperCase() + weekday.slice(1);
   return `${dia} ${parts.day}/${parts.month}/${parts.year} · ${parts.hour}:${parts.minute}`;
 }
+
+const shareDateFormatter = new Intl.DateTimeFormat("es-PY", {
+  weekday: "long",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  timeZone: BUSINESS_TIMEZONE,
+});
+
+/**
+ * "Sábado 03/10/2026" — la fecha de la imagen para compartir el día (spec 10,
+ * fase 3). Sin hora: es "el día", no el momento del cierre. Por partes, igual
+ * que `formatTicketDateTime`.
+ */
+export function formatShareDate(instantISO: string): string {
+  const parts = Object.fromEntries(
+    shareDateFormatter
+      .formatToParts(new Date(instantISO))
+      .map((part) => [part.type, part.value]),
+  );
+  const weekday = parts.weekday ?? "";
+  const dia = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+  return `${dia} ${parts.day}/${parts.month}/${parts.year}`;
+}

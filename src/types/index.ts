@@ -23,6 +23,8 @@ export interface Barbershop {
   id: string;
   name: string;
   subscription_plan: SubscriptionPlan;
+  /** Para "Turnos: …" en la imagen de compartir el día (spec 10, fase 3). */
+  phone: string | null;
   created_at: string;
 }
 

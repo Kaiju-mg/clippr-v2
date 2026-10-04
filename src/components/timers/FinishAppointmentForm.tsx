@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import { OfflineNotice } from "@/components/ui/OfflineNotice";
+import { useOnline } from "@/lib/useOnline";
 import { completeScheduledAppointmentAction } from "@/actions/agenda.actions";
 import { formatGuaranies } from "@/lib/utils";
 import { SinCajaAviso } from "./SinCajaAviso";
@@ -45,6 +47,7 @@ export function FinishAppointmentForm({
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const online = useOnline();
 
   if (!cashSessionId) {
     return <SinCajaAviso onCancel={onCancel} />;
@@ -55,7 +58,7 @@ export function FinishAppointmentForm({
   const sessionId: string = cashSessionId;
 
   async function handleConfirm() {
-    if (!timer.appointmentId) return;
+    if (!timer.appointmentId || !online) return;
     setError(null);
     setIsLoading(true);
 
@@ -92,6 +95,8 @@ export function FinishAppointmentForm({
         </p>
       )}
 
+      {!online && <OfflineNotice pending="se cobró" />}
+
       <div className="flex justify-end gap-2">
         {error ? (
           <>
@@ -103,7 +108,11 @@ export function FinishAppointmentForm({
             >
               Descartar
             </Button>
-            <Button type="button" onClick={handleConfirm} disabled={isLoading}>
+            <Button
+              type="button"
+              onClick={handleConfirm}
+              disabled={isLoading || !online}
+            >
               {isLoading ? "Cobrando..." : "Reintentar"}
             </Button>
           </>
@@ -117,7 +126,11 @@ export function FinishAppointmentForm({
             >
               Cancelar
             </Button>
-            <Button type="button" onClick={handleConfirm} disabled={isLoading}>
+            <Button
+              type="button"
+              onClick={handleConfirm}
+              disabled={isLoading || !online}
+            >
               {isLoading ? "Cobrando..." : "Cobrar"}
             </Button>
           </>

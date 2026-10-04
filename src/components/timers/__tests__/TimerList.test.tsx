@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { setOnline } from "@/test/network";
 import { TimerList } from "../TimerList";
 
 describe("TimerList: aviso de caja cerrada", () => {
@@ -23,6 +24,17 @@ describe("TimerList: aviso de caja cerrada", () => {
 
   it("se puede iniciar un corte con la caja cerrada (regla 4)", () => {
     render(<TimerList cashSessionId={null} services={[]} />);
+
+    expect(
+      screen.getByRole("button", { name: /iniciar corte/i }),
+    ).toBeEnabled();
+  });
+});
+
+describe("TimerList — sin señal (spec 10, fase 3)", () => {
+  it("los temporizadores siguen andando: 'Iniciar corte' no depende de la red (regla 4)", () => {
+    render(<TimerList cashSessionId="cs1" services={[]} />);
+    setOnline(false);
 
     expect(
       screen.getByRole("button", { name: /iniciar corte/i }),

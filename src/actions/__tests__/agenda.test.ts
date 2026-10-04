@@ -30,6 +30,7 @@ interface QueryBuilderMock<T> {
   in: ReturnType<typeof vi.fn>;
   gte: ReturnType<typeof vi.fn>;
   lt: ReturnType<typeof vi.fn>;
+  lte: ReturnType<typeof vi.fn>;
   order: ReturnType<typeof vi.fn>;
   single: ReturnType<typeof vi.fn>;
   maybeSingle: ReturnType<typeof vi.fn>;
@@ -50,6 +51,7 @@ function createBuilder<T>(result: MockResult<T>): QueryBuilderMock<T> {
     in: vi.fn(() => builder),
     gte: vi.fn(() => builder),
     lt: vi.fn(() => builder),
+    lte: vi.fn(() => builder),
     order: vi.fn(() => builder),
     single: vi.fn(async () => result),
     maybeSingle: vi.fn(async () => result),

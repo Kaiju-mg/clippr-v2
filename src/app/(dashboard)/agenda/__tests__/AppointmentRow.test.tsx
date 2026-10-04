@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { setOnline } from "@/test/network";
 import { AppointmentRow } from "../_components/AppointmentRow";
 import type { Appointment } from "@/types";
 
@@ -158,5 +159,34 @@ describe("AppointmentRow — tema Recibo", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Debes abrir tu caja diaria",
     );
+  });
+});
+
+describe("AppointmentRow — sin señal (spec 10, fase 3)", () => {
+  it("'Cobrar' se deshabilita y no cae un sello optimista que después se vuelve atrás", () => {
+    fila();
+    setOnline(false);
+
+    const cobrar = screen.getByRole("button", { name: "Cobrar" });
+    expect(cobrar).toBeDisabled();
+    fireEvent.click(cobrar);
+
+    expect(completeScheduledAppointmentAction).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-stamp]")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Sin señal · todavía no se cobró",
+    );
+  });
+
+  it("sin caja abierta manda el aviso de caja, no el de señal", () => {
+    fila({}, { cashSessionId: null });
+    setOnline(false);
+    expect(screen.queryByText(/sin señal/i)).not.toBeInTheDocument();
+  });
+
+  it("un turno ya cobrado no muestra el aviso", () => {
+    fila({ status: "completed" });
+    setOnline(false);
+    expect(screen.queryByText(/sin señal/i)).not.toBeInTheDocument();
   });
 });

@@ -130,9 +130,8 @@ los tokens, los componentes ya los usan.*
      poste chico de un solo color (rayas en `--stamp`) + "**N** DÍAS DE
      RACHA". Debajo, "Mañana va el N+1." si la racha está viva.
   4. Aparecen "Compartir" (contorno color papel) y "Listo" (relleno papel),
-     legibles sobre el fondo oscuro. *(Implementado: "Listo". "Compartir"
-     se suma con la pantalla de compartir de la fase 3; ver
-     `docs/decisiones.md` 2026-10-03.)*
+     legibles sobre el fondo oscuro. *("Compartir" se sumó con la fase 3,
+     2026-10-04.)*
   - Si la racha no se pudo guardar (falta `SUPABASE_SERVICE_ROLE_KEY`, ver
     spec 09), el ticket sale igual, sin sello.
 - [x] **Resto de las pantallas del muestrario:**
@@ -154,7 +153,7 @@ los tokens, los componentes ya los usan.*
 
 *Donde la estética pasa a ser funcionalidad de negocio.*
 
-- [ ] **Compartir el día en el estado de WhatsApp:**
+- [x] **Compartir el día en el estado de WhatsApp:**
   - Pantalla o panel "Compartir el día" (se abre desde "Compartir" del
     cierre) con la **vista previa 9:16** de la imagen y el botón "Compartir
     imagen".
@@ -173,7 +172,7 @@ los tokens, los componentes ya los usan.*
   - Compartir con Web Share API nivel 2: si `navigator.canShare({ files })`
     da verdadero, `navigator.share({ files: [png] })` abre el menú del
     celular (WhatsApp → Mi estado). Si no, se descarga el PNG.
-- [ ] **Teléfono de la barbería: migración nueva.** `barbershops` no tiene
+- [x] **Teléfono de la barbería: migración nueva.** `barbershops` no tiene
   teléfono. Agregar `phone text null`, editable por el dueño (desde `/mas`,
   en la tarjeta de la barbería). Si es `null`, el renglón "Turnos" no se
   dibuja.
@@ -185,7 +184,7 @@ los tokens, los componentes ya los usan.*
     policy no puede mirar qué columna cambió). Probar que un barbero no
     puede cambiar `phone` ni `subscription_plan`, y que el dueño no puede
     cambiar `subscription_plan`.
-- [ ] **Estado sin conexión honesto: paso A (esta spec).**
+- [x] **Estado sin conexión honesto: paso A (esta spec).**
   - **Hoy no existe cola offline.** `timerStore` persiste los
     temporizadores, pero cobrar y cerrar caja son Server Actions que fallan
     sin red. Prometer "se guarda cuando vuelva" sería mentira.
@@ -198,7 +197,7 @@ los tokens, los componentes ya los usan.*
     id generado en el cliente para que el servidor no cobre dos veces;
     recién ahí el texto pasa a "Sin señal · se guarda cuando vuelva" y cae
     el sello al sincronizar.
-- [ ] **Háptica:** `navigator.vibrate` con un pulso corto (~30ms) al caer
+- [x] **Háptica:** `navigator.vibrate` con un pulso corto (~30ms) al caer
   el sello de COBRADO y un patrón de "impresora" (`[40,60,40,60,40]`)
   durante la impresión del cierre. Switch "Vibración" en `/mas`, guardado en
   `localStorage` (es por dispositivo) y prendido por defecto. Donde no hay

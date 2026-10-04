@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, beforeEach, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { CloseTicket, SELLO_DELAY_MS } from "../CloseTicket";
 import {
@@ -19,6 +19,11 @@ const CIERRE: CloseCelebration = {
   closedAt: "2026-10-04T00:05:00.000Z",
   barberName: "Eduardo Villalba",
   streak: { previous: 12, current: 13 },
+  share: {
+    barbershopName: "Barbería El Poste",
+    phone: "0981 123 456",
+    cutsByService: [{ name: "Corte clásico", count: 8 }],
+  },
 };
 
 function abrir(celebration: CloseCelebration = CIERRE) {
@@ -112,10 +117,105 @@ describe("CloseTicket", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("todavía no ofrece 'Compartir' (llega con la fase 3)", () => {
-    abrir();
+  it("sin los datos de la imagen (share null), no ofrece 'Compartir'", () => {
+    abrir({ ...CIERRE, share: null });
     expect(
       screen.queryByRole("button", { name: /compartir/i }),
     ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Listo" })).toBeInTheDocument();
+  });
+
+  it("'Compartir' abre 'Compartir el día' encima, sin reimprimir el ticket al volver", () => {
+    abrir();
+    const ticket = screen.getByRole("region", { name: "Ticket del cierre" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Compartir" }));
+    const pantalla = screen.getByRole("dialog", { name: "Compartir el día" });
+    expect(
+      within(pantalla).getByRole("region", { name: "Ticket del día" }),
+    ).toHaveTextContent("Corte clásicox8");
+
+    fireEvent.click(screen.getByRole("button", { name: "Volver al ticket" }));
+    expect(
+      screen.queryByRole("dialog", { name: "Compartir el día" }),
+    ).not.toBeInTheDocument();
+    // Es el mismo nodo: el ticket nunca se desmontó, no se vuelve a imprimir.
+    expect(screen.getByRole("region", { name: "Ticket del cierre" })).toBe(
+      ticket,
+    );
+  });
+
+  it("con 'Compartir el día' abierto, Escape vuelve al ticket en vez de cerrar todo", () => {
+    abrir();
+    fireEvent.click(screen.getByRole("button", { name: "Compartir" }));
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(
+      screen.queryByRole("dialog", { name: "Compartir el día" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Cierre de caja" }),
+    ).toBeInTheDocument();
+  });
+
+  it("'Mostrar montos' arranca apagado cada vez que se abre", () => {
+    abrir();
+    fireEvent.click(screen.getByRole("button", { name: "Compartir" }));
+    const montos = screen.getByRole("switch", { name: "Mostrar montos" });
+    expect(montos).toHaveAttribute("aria-checked", "false");
+
+    fireEvent.click(montos);
+    expect(montos).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Volver al ticket" }));
+    fireEvent.click(screen.getByRole("button", { name: "Compartir" }));
+    expect(
+      screen.getByRole("switch", { name: "Mostrar montos" }),
+    ).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("un cierre nuevo arranca en el ticket, no en la pantalla de compartir anterior", () => {
+    abrir();
+    fireEvent.click(screen.getByRole("button", { name: "Compartir" }));
+    act(() =>
+      useCloseCelebration
+        .getState()
+        .show({ ...CIERRE, closedAt: "2026-10-05T00:05:00.000Z" }),
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "Compartir el día" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("CloseTicket — vibración de la impresora (fase 3)", () => {
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "vibrate");
+    localStorage.clear();
+  });
+
+  it("vibra con el patrón de impresora una vez por cierre, y no al volver de Compartir", () => {
+    const fn = vi.fn(() => true);
+    Object.defineProperty(navigator, "vibrate", { configurable: true, value: fn });
+
+    abrir();
+    expect(fn).toHaveBeenCalledWith([40, 60, 40, 60, 40]);
+    const llamadas = fn.mock.calls.length;
+
+    fireEvent.click(screen.getByRole("button", { name: "Compartir" }));
+    fireEvent.click(screen.getByRole("button", { name: "Volver al ticket" }));
+    expect(fn).toHaveBeenCalledTimes(llamadas);
+  });
+
+  it("con la vibración apagada en /mas, imprime sin vibrar", () => {
+    const fn = vi.fn(() => true);
+    Object.defineProperty(navigator, "vibrate", { configurable: true, value: fn });
+    localStorage.setItem("clippr-vibracion", "off");
+
+    abrir();
+    expect(fn).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("region", { name: "Ticket del cierre" }),
+    ).toBeInTheDocument();
   });
 });
