@@ -117,7 +117,7 @@ export function StreakCelebration() {
           {celebration.finalBalance !== null && (
             <>
               Caja cerrada con{" "}
-              <b className="text-foreground tabular-nums">
+              <b className="text-foreground font-mono tabular-nums">
                 {formatGuaranies(celebration.finalBalance)}
               </b>
               .

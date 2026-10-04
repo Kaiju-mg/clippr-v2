@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { IBM_Plex_Mono, Inter } from "next/font/google";
 import { cookies } from "next/headers";
 import { parseTheme, THEME_BROWSER_COLOR, THEME_COOKIE } from "@/lib/theme";
 import "./globals.css";
@@ -8,6 +8,14 @@ const inter = Inter({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
   variable: "--font-inter",
+});
+
+// Sólo para montos y horas (`font-mono tabular-nums`, spec 10). Elegida
+// sobre Space Mono y JetBrains Mono porque es la que mejor se lee al sol.
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["500", "600"],
+  variable: "--font-plex-mono",
 });
 
 export const metadata: Metadata = {
@@ -51,7 +59,11 @@ export default async function RootLayout({
   const theme = await currentTheme();
 
   return (
-    <html lang="es" className={inter.variable} data-theme={theme}>
+    <html
+      lang="es"
+      className={`${inter.variable} ${plexMono.variable}`}
+      data-theme={theme}
+    >
       <body>{children}</body>
     </html>
   );

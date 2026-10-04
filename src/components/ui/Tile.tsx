@@ -66,7 +66,24 @@ interface StatTileProps {
    * media pantalla (pedido del usuario, 2026-09-20).
    */
   compact?: boolean;
+  /**
+   * La cifra es un monto o una hora: va en `font-mono` (spec 10). Las
+   * cantidades (cortes, días) siguen en Inter.
+   */
+  mono?: boolean;
   className?: string;
+}
+
+const NBSP = String.fromCharCode(0xa0);
+
+/**
+ * `Intl` separa "Gs." del número con un espacio duro (U+00A0). En mono cada
+ * cifra ocupa ~0,6em y "Gs. 1.250.000" no entra en un cubo de media pantalla
+ * de 360px: con un espacio normal, "Gs." baja a su propio renglón en vez de
+ * desbordar el cubo.
+ */
+function breakableAmount(value: string): string {
+  return value.replaceAll(NBSP, " ");
 }
 
 /**
@@ -83,6 +100,7 @@ export function StatTile({
   variant = "default",
   size = "lg",
   compact = false,
+  mono = false,
   className,
 }: StatTileProps) {
   const mutedClass = variant === "filled" ? "opacity-80" : "text-muted";
@@ -101,7 +119,7 @@ export function StatTile({
         {value && (
           <span
             className={cn(
-              "font-display tabular-nums",
+              mono ? "font-mono tabular-nums" : "font-display tabular-nums",
               size === "lg"
                 ? compact
                   ? "text-2xl leading-none font-normal tracking-tight"
@@ -109,7 +127,7 @@ export function StatTile({
                 : "text-xl leading-tight font-medium tracking-tight",
             )}
           >
-            {value}
+            {mono ? breakableAmount(value) : value}
           </span>
         )}
         <span

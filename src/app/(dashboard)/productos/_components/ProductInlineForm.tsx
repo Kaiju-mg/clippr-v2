@@ -99,7 +99,7 @@ export function ProductInlineForm({
         type="number"
         min="1"
         step="1"
-        className="tabular-nums"
+        className="font-mono tabular-nums"
         value={price}
         onChange={(event) => setPrice(event.target.value)}
         required

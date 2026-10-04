@@ -169,9 +169,12 @@ export function formatBusinessDateLabel(dateISO: string): string {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
+// `hourCycle: "h23"` explícito: `es-PY` sale en 12 horas ("04:30 p. m."),
+// que no entra en la columna de horas en mono (spec 10).
 const timeFormatter = new Intl.DateTimeFormat("es-PY", {
   hour: "2-digit",
   minute: "2-digit",
+  hourCycle: "h23",
   timeZone: BUSINESS_TIMEZONE,
 });
 
@@ -183,6 +186,7 @@ export function formatBusinessTime(instantISO: string): string {
 const dateTimeFormatter = new Intl.DateTimeFormat("es-PY", {
   dateStyle: "short",
   timeStyle: "short",
+  hourCycle: "h23",
   timeZone: BUSINESS_TIMEZONE,
 });
 

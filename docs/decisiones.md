@@ -1380,3 +1380,61 @@ desaparecería en el mismo instante. La URL dejaría que cualquiera se
 Costo: un store más (sin `persist`: el festejo no sobrevive un F5, a
 propósito) y que `closeCashSessionAction` cambie de forma: ahora devuelve
 `{ session, streak }` en vez de la caja sola.
+
+## 2026-10-03 — Paleta papel/tinta/sello: reemplaza el blanco frío y el oscuro azul
+Elegido (spec 10, fase 1): los tokens de `globals.css` cambian de valor a
+la paleta del recibo: papel `#fffdf6` y cubos `#f4efe4` en claro; carbón
+cálido `#161412` y `#211e1a` en oscuro; tinta negra cálida para el texto.
+La tinta azul de marca (`--accent`) no cambia. Se suman `--stamp` (rojo de
+sello) y `--paper`/`--paper-ink`/`--paper-rule` (el ticket). Los nombres no
+cambian, así que ningún componente se tocó por el color.
+Descartado: neón, espuma, navaja, damero y libreta (muestrario del
+2026-10-03), y cualquier textura de papel (ruido, granulado, imágenes).
+Por qué: reemplaza los valores del 2026-09-20 (blanco `#ffffff` y oscuro
+azul noche `#0f141b`), que no tenían relación con nada de barbería. Los
+tres colores salen del poste, que ya era la pieza con más identidad de la
+app. El papel se logra con color, punteado y tipografía, sin texturas, por
+el mismo motivo que se descartó el glassmorphism (gama media).
+**La regla del rojo:** `--stamp` es sólo tinta de sello y marca algo que ya
+pasó (cobrado, agotado, la racha, el mejor del mes). Nunca un botón ni un
+error: los errores siguen con `--danger`, aunque los dos sean rojos.
+Costo: el contraste se verifica con un test que lee el CSS
+(`src/app/__tests__/theme-tokens.test.ts`), no a ojo. `--warning` en claro
+quedó "sin cambio" por la spec y no llega a AA sobre los cubos (3,7:1); ver
+`docs/deuda-tecnica.md`.
+
+## 2026-10-03 — "Iniciar corte" relleno: revierte el contorno del 2026-09-15
+Elegido: el CTA de `/inicio` es el cubo relleno (`bg-accent`) de la
+pantalla.
+Descartado: el contorno (borde 1,5 px en Tinta, fondo blanco) elegido el
+2026-09-15.
+Por qué: en los hechos ya era relleno desde el pase a bento (2026-09-20),
+pero ninguna entrada de este archivo lo registraba y la del 2026-09-15
+seguía diciendo "contorno". Con la regla del bento (un solo cubo relleno
+por pantalla), el CTA es el candidato natural, y sobre papel cálido el
+contorno se pierde.
+Costo: ninguno nuevo; queda escrito.
+
+## 2026-10-03 — Montos y horas en IBM Plex Mono, y en 24 horas
+Elegido: `font-mono tabular-nums` (IBM Plex Mono 500/600, la que mejor se
+lee al sol) sólo en montos y horas; títulos, nombres, cantidades y fechas
+en palabras siguen en Inter. Tres ajustes que salieron de mirarlo a 360 px:
+- Los montos grandes bajaron a 2 rem (`/caja`, ingresos del dueño): en mono
+  cada cifra ocupa ~0,6 em y "Gs. 10.250.000" a 2,5 rem no entra.
+- `StatTile` con `mono` cambia el espacio duro (U+00A0) que pone `Intl`
+  entre "Gs." y el número por uno normal, así "Gs." baja de renglón en vez
+  de desbordar el cubo de media pantalla.
+- `formatBusinessTime`/`formatBusinessDateTime` fijan `hourCycle: "h23"`.
+  `es-PY` las da en 12 horas ("04:30 p. m."), que es lo que la app mostraba
+  desde la spec 06 (sabido: lo anotaba un test). El muestrario va en 24 h y
+  en mono el sufijo rompe la columna de horas. Los tests comparan exacto.
+  Cierra lo que quedó abierto el 2026-09-20 ("Los formateadores de fecha
+  se centralizan…") y la entrada de `docs/deuda-tecnica.md`, que se borró.
+Descartado: mono en el monto grande de abrir caja (`OpenCashView`), cuyo
+tamaño está calibrado por cantidad de caracteres para Inter: en mono los
+puntos de miles ocupan un ancho entero y "1.000.000" desbordaría. Ya era un
+caso aparte desde los campos flotantes.
+Por qué: los números en columna se comparan de un vistazo, y es lo que
+dice "ticket" sin dibujar ningún ticket.
+Costo: una fuente más en todas las pantallas (dos pesos, sólo latin). La
+de la Fase 2 (Courier Prime) va a cargarse sólo en el ticket.

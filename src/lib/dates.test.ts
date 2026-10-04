@@ -9,6 +9,7 @@ import {
   businessWeekStart,
   daysBetweenDateISO,
   formatBusinessDateLabel,
+  formatBusinessDateTime,
   formatBusinessTime,
   isValidDateISO,
   isValidTime,
@@ -95,6 +96,17 @@ describe("formateo para pantalla", () => {
 
   it("la hora de un turno se muestra en la zona del negocio", () => {
     // 00:30 UTC del 17 son las 21:30 del 16 en Paraguay (UTC−3).
-    expect(formatBusinessTime("2026-09-17T00:30:00.000Z")).toMatch(/9:30/);
+    expect(formatBusinessTime("2026-09-17T00:30:00.000Z")).toBe("21:30");
+  });
+
+  it("la hora va en 24 horas, sin a. m./p. m. (columna fija en mono)", () => {
+    // 12:05 UTC son las 09:05 en Paraguay: con cero adelante y sin sufijo.
+    expect(formatBusinessTime("2026-09-17T12:05:00.000Z")).toBe("09:05");
+    expect(formatBusinessDateTime("2026-09-17T00:30:00.000Z")).not.toMatch(
+      /[ap]\.\s?m\./,
+    );
+    expect(formatBusinessDateTime("2026-09-17T00:30:00.000Z")).toContain(
+      "21:30",
+    );
   });
 });

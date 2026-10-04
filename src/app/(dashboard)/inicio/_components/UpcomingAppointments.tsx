@@ -97,7 +97,7 @@ export function UpcomingAppointments({
               key={appointment.id}
               className="border-line flex items-center gap-3 border-b py-2.5 last:border-b-0 last:pb-0"
             >
-              <span className="text-accent-ink w-12 flex-none text-[15px] font-medium tabular-nums">
+              <span className="text-accent-ink w-12 flex-none font-mono text-[14px] font-medium tabular-nums">
                 {formatBusinessTime(appointment.start_time)}
               </span>
               <span className="flex min-w-0 flex-col">

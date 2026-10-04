@@ -24,8 +24,8 @@ function appointment(overrides: Partial<Appointment> = {}): Appointment {
     service_id: "s1",
     // 18:30 UTC = 15:30 en America/Asuncion. Paraguay dejó de mover el
     // reloj en 2024 y quedó fijo en UTC−3, así que no hay que pensar en
-    // qué mes es. Se muestra como "3:30 p. m.": `es-PY` formatea en 12
-    // horas, que es lo que la app viene mostrando desde la spec 06.
+    // qué mes es. Se muestra como "15:30": desde la spec 10 las horas van
+    // en 24 h (antes `es-PY` las daba en 12, "3:30 p. m.").
     start_time: "2026-09-20T18:30:00.000Z",
     end_time: "2026-09-20T19:15:00.000Z",
     status: "scheduled",
@@ -52,9 +52,9 @@ describe("UpcomingAppointments", () => {
       />,
     );
 
-    // Regex y no texto exacto: Intl mete un espacio fino entre la hora y
-    // el "p. m." que no se puede escribir a mano sin errarle.
-    expect(screen.getByText(/3:30/)).toBeInTheDocument();
+    // Texto exacto: la hora va en 24 h, sin "p. m." (spec 10, ver
+    // `formatBusinessTime`).
+    expect(screen.getByText("15:30")).toBeInTheDocument();
     expect(screen.getByText("Juan Ramírez")).toBeInTheDocument();
     expect(screen.getByText("Corte + barba")).toBeInTheDocument();
   });

@@ -80,7 +80,7 @@ export function FinishAppointmentForm({
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-sm">{service?.name ?? "Servicio del turno"}</span>
         {service && (
-          <span className="text-sm font-semibold tabular-nums">
+          <span className="font-mono text-sm font-semibold tabular-nums">
             {formatGuaranies(service.price)}
           </span>
         )}

@@ -110,7 +110,7 @@ export function SellProductForm({ products, onClose }: SellProductFormProps) {
       {total !== null && (
         <p className="flex justify-between text-sm">
           <span className="text-muted">Total</span>
-          <span className="font-semibold tabular-nums">
+          <span className="font-mono font-semibold tabular-nums">
             {formatGuaranies(total)}
           </span>
         </p>

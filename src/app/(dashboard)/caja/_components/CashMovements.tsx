@@ -20,6 +20,8 @@ interface CashMovementsProps {
  * recortada en el servidor (`getCashMovementsAction`): el saldo de arriba
  * no se calcula sumando esta lista, se pide aparte a
  * `getCashBalanceAction`, que suma todo en la base.
+ *
+ * Filas con línea punteada: es plata (spec 10, regla 3).
  */
 export function CashMovements({
   movements,
@@ -44,19 +46,21 @@ export function CashMovements({
           {movements.map((movement) => (
             <li
               key={movement.id}
-              className="border-line flex items-center justify-between gap-3 border-b py-2.5 last:border-b-0 last:pb-0"
+              className="border-muted/55 flex items-center justify-between gap-3 border-b border-dashed py-2.5 last:border-b-0 last:pb-0"
             >
               <span className="flex min-w-0 flex-col">
                 <span className="truncate text-[15px]">
                   {movement.description}
                 </span>
                 <span className="text-muted text-[13px]">
-                  {formatBusinessTime(movement.created_at)} ·{" "}
-                  {CATEGORY_LABELS[movement.category] ?? movement.category}
+                  <span className="font-mono tabular-nums">
+                    {formatBusinessTime(movement.created_at)}
+                  </span>{" "}
+                  · {CATEGORY_LABELS[movement.category] ?? movement.category}
                 </span>
               </span>
               <span
-                className={`flex-none text-[15px] font-semibold tabular-nums ${
+                className={`flex-none font-mono text-[14px] font-semibold tabular-nums ${
                   movement.type === "income" ? "text-success" : "text-danger"
                 }`}
               >

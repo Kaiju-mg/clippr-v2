@@ -12,6 +12,15 @@
  * una barbería real sin caer en el azul-SaaS genérico ni en naranja/neón. En
  * oscuro se aclara, pero no cambia de familia: sigue siendo el mismo azul.
  *
+ * Tema "Recibo de Barbería" (spec 10, 2026-10-03): los colores salen del
+ * poste. Blanco → papel cálido (`--background`, `--surface-2`), azul →
+ * tinta (`--accent`), rojo → sello (`--stamp`). El oscuro es carbón cálido,
+ * no el azul noche de antes. Dos reglas que no se ven en los valores:
+ * - `--stamp` es sólo tinta de sello, para algo que ya pasó (cobrado,
+ *   agotado, la racha). Nunca un botón ni un error: eso es `--danger`.
+ * - `--paper*` es el papel del ticket, un objeto: no cambia con el tema.
+ * Sin texturas de papel: el papel se logra con color, punteado y tipografía.
+ *
  * Por qué el acento viene en tres variantes: el mismo color se usa como
  * relleno (`bg-accent`, con texto encima) y como tinta de texto o ícono
  * (`text-accent-ink`, sobre el fondo de la página). Un solo valor no puede
@@ -28,36 +37,46 @@
 
 :root {
   color-scheme: light;
-  --background: #ffffff;
-  --foreground: #17171a;
-  --muted: #74736c;
-  --line: #e5e3dd;
-  --line-strong: #cfccc3;
-  --surface-2: #f6f6f4;
+  --background: #fffdf6;
+  --foreground: #26231d;
+  --muted: #6f685b;
+  --line: #e4ddcd;
+  --line-strong: #c9c0ac;
+  --surface-2: #f4efe4;
   --accent: #1f3a5f;
   --accent-strong: #16283f;
-  --accent-contrast: #ffffff;
+  --accent-contrast: #fffdf6;
   --accent-ink: #1f3a5f;
   --success: #2f6b4f;
   --warning: #b9651b;
   --danger: #a83b32;
+  --stamp: #b3261e;
+  --paper: #fffdf6;
+  --paper-ink: #26231d;
+  --paper-rule: #8c867a;
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --background: #0f141b;
-  --foreground: #f2f4f7;
-  --muted: #9aa6b6;
-  --line: #27313f;
-  --line-strong: #3a4657;
-  --surface-2: #1a2230;
+  --background: #161412;
+  --foreground: #f1ece1;
+  --muted: #a69e8f;
+  --line: #35302a;
+  --line-strong: #4b453c;
+  --surface-2: #211e1a;
   --accent: #3d6da8;
   --accent-strong: #5386bf;
   --accent-contrast: #ffffff;
-  --accent-ink: #8fb4dd;
-  --success: #7fd0a4;
+  --accent-ink: #9dbbe0;
+  --success: #8fd1a8;
   --warning: #f2b06b;
   --danger: #f0938a;
+  --stamp: #ef8a7f;
+  /* El ticket es un objeto, no una superficie (regla 4 de la spec 10): el
+     papel sigue claro en oscuro, y por eso su tinta no se invierte. */
+  --paper: #f3eedf;
+  --paper-ink: #26231d;
+  --paper-rule: #8c867a;
 }
 
 @theme inline {
@@ -74,7 +93,14 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
+  --color-stamp: var(--stamp);
+  --color-paper: var(--paper);
+  --color-paper-ink: var(--paper-ink);
+  --color-paper-rule: var(--paper-rule);
   --font-sans: var(--font-inter);
+  /* Sólo montos y horas (`font-mono tabular-nums`), nunca títulos ni
+     nombres: ver spec 10, "Tipografía". */
+  --font-mono: var(--font-plex-mono);
   --font-display: var(--font-inter);
   /* Radio del "cubo" de la grilla bento. Vive acá para cambiar el redondeo
      de las cuatro pantallas desde un solo lugar. */
@@ -94,6 +120,21 @@ body {
     "Segoe UI",
     Roboto,
     sans-serif;
+}
+
+/*
+ * Barra "perforada" (spec 10): segmentos de 5px con 3px de aire, sin
+ * redondeo, como el picado de un talonario. Pinta con `currentColor`, así el
+ * color se elige con una clase `text-*` (y su opacidad con `/30`), igual en
+ * el riel y en el relleno — los segmentos de los dos quedan alineados porque
+ * arrancan en el mismo borde.
+ */
+@utility perforated {
+  background-image: repeating-linear-gradient(
+    90deg,
+    currentColor 0 5px,
+    transparent 5px 8px
+  );
 }
 
 @keyframes streak-beat {

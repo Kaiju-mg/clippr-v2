@@ -124,7 +124,7 @@ export function ServiceList({ services }: ServiceListProps) {
                     </span>
                   </div>
                   <span
-                    className={`text-accent-ink text-[17px] font-bold whitespace-nowrap tabular-nums ${
+                    className={`text-accent-ink font-mono text-[15px] font-semibold whitespace-nowrap tabular-nums ${
                       service.is_active ? "" : "opacity-40"
                     }`}
                   >

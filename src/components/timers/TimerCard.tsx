@@ -68,10 +68,13 @@ export function TimerCard({ timer, cashSessionId, services }: TimerCardProps) {
           )}
           {esTurnoAgendado && service && (
             <span className="text-muted truncate text-[13px]">
-              {service.name} · {formatGuaranies(service.price)}
+              {service.name} ·{" "}
+              <span className="font-mono tabular-nums">
+                {formatGuaranies(service.price)}
+              </span>
             </span>
           )}
-          <span className="font-display text-3xl font-semibold tabular-nums">
+          <span className="font-mono text-3xl font-medium tabular-nums">
             {formatElapsed(elapsedMs)}
           </span>
         </div>

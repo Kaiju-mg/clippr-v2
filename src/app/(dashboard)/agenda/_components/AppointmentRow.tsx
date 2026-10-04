@@ -100,11 +100,14 @@ export function AppointmentRow({
             {appointment.client_name ?? "Sin nombre"}
           </span>
           <span className="text-muted text-[13px]">
-            {formatBusinessTime(appointment.start_time)} · {serviceName}
+            <span className="font-mono tabular-nums">
+              {formatBusinessTime(appointment.start_time)}
+            </span>{" "}
+            · {serviceName}
           </span>
         </div>
         <span
-          className={`text-accent-ink text-[17px] font-bold whitespace-nowrap tabular-nums ${
+          className={`text-accent-ink font-mono text-[15px] font-semibold whitespace-nowrap tabular-nums ${
             isScheduled ? "" : "opacity-40"
           }`}
         >

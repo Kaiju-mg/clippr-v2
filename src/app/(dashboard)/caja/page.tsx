@@ -79,7 +79,7 @@ export default async function CajaPage() {
             aria-hidden="true"
             className="bg-success h-1.5 w-1.5 rounded-full"
           />
-          Abierta desde {desde}
+          Abierta desde <span className="font-mono tabular-nums">{desde}</span>
         </span>
       </header>
 
@@ -90,7 +90,9 @@ export default async function CajaPage() {
         <span className="text-[0.625rem] font-medium tracking-[0.14em] uppercase opacity-80">
           Saldo actual
         </span>
-        <span className="font-display text-[2.5rem] leading-none font-semibold tracking-tight tabular-nums">
+        {/* 2rem y no más: en mono cada cifra ocupa ~0,6em y "Gs. 1.234.567"
+            tiene que entrar en un celular de 360px. */}
+        <span className="font-mono text-[2rem] leading-none font-semibold tracking-tight tabular-nums">
           {formatGuaranies(balance.current)}
         </span>
 
@@ -99,7 +101,7 @@ export default async function CajaPage() {
             <dt className="text-[0.5625rem] font-medium tracking-[0.1em] uppercase opacity-80">
               Inicial
             </dt>
-            <dd className="text-[13px] font-medium tabular-nums">
+            <dd className="font-mono text-[12px] font-medium tabular-nums">
               {formatGuaranies(session.initial_balance)}
             </dd>
           </div>
@@ -107,7 +109,7 @@ export default async function CajaPage() {
             <dt className="text-[0.5625rem] font-medium tracking-[0.1em] uppercase opacity-80">
               Ingresos
             </dt>
-            <dd className="text-[13px] font-medium tabular-nums">
+            <dd className="font-mono text-[12px] font-medium tabular-nums">
               + {formatGuaranies(balance.income)}
             </dd>
           </div>
@@ -115,7 +117,7 @@ export default async function CajaPage() {
             <dt className="text-[0.5625rem] font-medium tracking-[0.1em] uppercase opacity-80">
               Egresos
             </dt>
-            <dd className="text-[13px] font-medium tabular-nums">
+            <dd className="font-mono text-[12px] font-medium tabular-nums">
               − {formatGuaranies(balance.expense)}
             </dd>
           </div>

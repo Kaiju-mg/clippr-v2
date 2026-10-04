@@ -690,7 +690,7 @@ suma en la base: la lista está recortada y sumarla daría otro número.
 cada uno su propio `Intl.DateTimeFormat` con la zona a mano. Dos cosas que
 quedaron a la vista al unificar: `es-PY` formatea la hora en **12 horas**
 ("3:30 p. m."), que es lo que la app muestra desde la spec 06 y se dejó
-igual; y Paraguay dejó de mover el reloj en 2024, así que está fijo en
+igual (**pasó a 24 h el 2026-10-03**, ver "Tema Recibo"); y Paraguay dejó de mover el reloj en 2024, así que está fijo en
 UTC−3.
 
 **Qué se verificó (2026-09-20):** `npm run lint`, `npm run typecheck` y
@@ -858,6 +858,52 @@ el minimalismo a propósito. **Sin migraciones.**
   componentes con Testing Library: 263 tests) y capturas de los componentes
   reales en los dos temas con una página temporal, ya borrada. **No se
   probó con sesión iniciada** contra el proyecto real.
+
+### Tema Recibo (en curso: fase 1 implementada)
+
+Spec 10 (`docs/specs/10-theme-recibo.md`): la app entera pasa al material
+del ticket de papel térmico. Los colores salen del poste: blanco → papel,
+azul → tinta, rojo → sello. Referencia visual: Artifact "Clippr en papel".
+**Sin migraciones** en la fase 1.
+
+- **Tokens** (`src/app/globals.css`): cambian los *valores* de los
+  existentes (papel `#fffdf6` / carbón cálido `#161412`, cubos `#f4efe4` /
+  `#211e1a`, tinta negra cálida), sin renombrar ninguno. Nuevos: `--stamp`
+  (sólo sellos, nunca botones ni errores), y `--paper`, `--paper-ink`,
+  `--paper-rule` para el ticket, que es un objeto y queda claro en los dos
+  temas. Registrados en `@theme inline` (`bg-paper`, `text-stamp`, etc.).
+  `THEME_BROWSER_COLOR` sigue a `--background`.
+- **Tipografía:** IBM Plex Mono 500/600 (`next/font`, `--font-plex-mono` →
+  `font-mono`) **sólo en montos y horas**, siempre con `tabular-nums`:
+  listas de `/agenda`, `/caja`, "Lo que viene", precios de catálogo,
+  cronómetro, KPIs de `/estadisticas` y los campos de monto/precio.
+  `StatTile` suma la prop `mono`, que además deja partir "Gs." del número
+  (ver `docs/decisiones.md`). Excepciones: el monto grande de abrir caja
+  (`OpenCashView`) y el texto de las `<option>`, que siguen en Inter.
+- **Horas en 24 h:** `formatBusinessTime`/`formatBusinessDateTime` fijan
+  `hourCycle: "h23"`; `es-PY` daba "04:30 p. m." desde la spec 06, y el
+  muestrario va en 24 h.
+- **Punteado** (regla 3: sólo donde hay plata o se cuenta algo):
+  `border-dashed border-muted/55` en las filas de `/agenda` y de los
+  movimientos de `/caja`. El resto de las listas sigue con línea lisa.
+- **`PerforatedBar`** (`src/components/ui/PerforatedBar.tsx`): barra de
+  progreso perforada (segmentos de 5px, 3px de aire, sin redondeo) con la
+  utilidad `perforated` de `globals.css` (`repeating-linear-gradient` sobre
+  `currentColor`). Tonos `accent` y `on-accent`. La usan el nivel del
+  barbero y el ranking del dueño.
+- **"Iniciar corte"** sigue relleno (`bg-accent`), ahora como decisión
+  explícita.
+- **Prueba:** Vitest (323 tests). `src/app/__tests__/theme-tokens.test.ts`
+  lee `globals.css` y verifica la tabla de la spec, el registro en
+  `@theme inline`, `THEME_BROWSER_COLOR` y el contraste AA de los pares de
+  texto en los dos temas (`--muted` sobre `--surface-2`: 4,81:1 claro,
+  6,25:1 oscuro). Capturas a 360 px en los dos temas con Chromium headless
+  sobre `/login` y una página temporal (ya borrada) que montaba los
+  componentes reales con datos falsos. Después, recorrido con sesión de
+  dueño contra el proyecto real (360 px, claro y oscuro): `/inicio`,
+  `/agenda`, `/estadisticas`, `/servicios` y `/productos` sin desbordes ni
+  errores de consola. Los movimientos de `/caja` (hacía falta abrir una
+  caja) y la barra de nivel del barbero sólo se vieron con datos falsos.
 
 ## Modelo de Datos
 

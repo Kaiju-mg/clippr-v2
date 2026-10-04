@@ -14,10 +14,14 @@ export const THEME_COOKIE = "clippr-theme";
 /** Un año: una preferencia visual no debería expirar sola. */
 export const THEME_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
-/** Color de la barra del navegador por tema (tiene que seguir a --background). */
+/**
+ * Color de la barra del navegador por tema. Tiene que seguir a `--background`
+ * de `globals.css` (papel / carbón cálido desde la spec 10); lo verifica
+ * `src/app/__tests__/theme-tokens.test.ts`.
+ */
 export const THEME_BROWSER_COLOR: Record<Theme, string> = {
-  light: "#ffffff",
-  dark: "#0f141b",
+  light: "#fffdf6",
+  dark: "#161412",
 };
 
 /**

@@ -1,4 +1,5 @@
 import { Scissors, Wallet } from "lucide-react";
+import { PerforatedBar } from "@/components/ui/PerforatedBar";
 import { StatTile, Tile } from "@/components/ui/Tile";
 import { LEVEL_LABELS, LEVEL_WINDOW_DAYS } from "@/lib/levels";
 import { formatGuaranies } from "@/lib/utils";
@@ -20,8 +21,8 @@ interface BarberDashboardProps {
  * lugar con espacio para explicar que la liga se mide sobre una ventana
  * móvil de 30 días, sin lo cual el número no se entiende.
  *
- * La barra de progreso es un `div` con `width` en porcentaje: la spec pide
- * evitar librerías de gráficos en esta iteración.
+ * La barra de progreso es `PerforatedBar` (spec 10): un `div` con `width` en
+ * porcentaje, sin librerías de gráficos.
  */
 export function BarberDashboard({ stats, firstName }: BarberDashboardProps) {
   const { progress } = stats;
@@ -55,6 +56,7 @@ export function BarberDashboard({ stats, firstName }: BarberDashboardProps) {
           value={formatGuaranies(stats.income)}
           label="Cobrado hoy"
           size="md"
+          mono
           className="aspect-square"
         />
       </div>
@@ -79,23 +81,16 @@ export function BarberDashboard({ stats, firstName }: BarberDashboardProps) {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <div
-            className="bg-accent-contrast/20 h-2 overflow-hidden rounded-full"
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(progress.ratio * 100)}
-            aria-label={
+          <PerforatedBar
+            tone="on-accent"
+            className="h-2"
+            value={progress.ratio}
+            label={
               progress.nextLevel
                 ? `Progreso hacia ${LEVEL_LABELS[progress.nextLevel]}`
                 : "Nivel máximo alcanzado"
             }
-          >
-            <div
-              className="bg-accent-contrast h-full rounded-full"
-              style={{ width: `${Math.round(progress.ratio * 100)}%` }}
-            />
-          </div>
+          />
           <p className="text-xs opacity-80">
             {ventana}
             {progress.nextLevel

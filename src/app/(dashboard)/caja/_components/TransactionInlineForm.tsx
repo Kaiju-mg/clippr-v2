@@ -74,7 +74,7 @@ export function TransactionInlineForm({
         value={amount.formatted}
         onChange={amount.handleChange}
         placeholder="0"
-        className="font-semibold tabular-nums"
+        className="font-mono font-semibold tabular-nums"
       />
 
       <Input

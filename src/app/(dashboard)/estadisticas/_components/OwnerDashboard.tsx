@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Scissors, Wallet } from "lucide-react";
+import { PerforatedBar } from "@/components/ui/PerforatedBar";
 import { StatTile, Tile, tileClasses } from "@/components/ui/Tile";
 import { cn, formatGuaranies } from "@/lib/utils";
 import type { OwnerStats } from "@/actions/stats.actions";
@@ -29,8 +30,8 @@ interface OwnerDashboardProps {
  * cliente: cada cambio es un fetch real al servidor, mismo criterio que
  * `?date=` en la agenda.
  *
- * El "gráfico" del equipo son barras de Tailwind proporcionales al mejor del
- * rango — sin librerías de gráficos, como pide la spec.
+ * El "gráfico" del equipo son barras perforadas (`PerforatedBar`, spec 10)
+ * proporcionales al mejor del rango — sin librerías de gráficos.
  */
 export function OwnerDashboard({ stats, range }: OwnerDashboardProps) {
   const conActividad = stats.leaderboard.filter(
@@ -71,7 +72,7 @@ export function OwnerDashboard({ stats, range }: OwnerDashboardProps) {
         <span className="text-[0.625rem] font-medium tracking-[0.14em] uppercase opacity-80">
           {INGRESOS_LABELS[range]}
         </span>
-        <span className="font-display text-[2.25rem] leading-none font-semibold tracking-tight tabular-nums">
+        <span className="font-mono text-[2rem] leading-none font-semibold tracking-tight tabular-nums">
           {formatGuaranies(stats.totalIncome)}
         </span>
       </Tile>
@@ -89,6 +90,7 @@ export function OwnerDashboard({ stats, range }: OwnerDashboardProps) {
           label="Ticket prom."
           hint="Sólo cortes, sin productos"
           size="md"
+          mono
           className="aspect-square"
         />
       </div>
@@ -102,7 +104,7 @@ export function OwnerDashboard({ stats, range }: OwnerDashboardProps) {
         )}
       >
         <span className="text-muted text-[13px]">Promedio diario</span>
-        <span className="font-display text-base font-semibold tracking-tight tabular-nums">
+        <span className="font-mono text-base font-semibold tracking-tight tabular-nums">
           {formatGuaranies(stats.dailyAverageIncome)}
         </span>
       </div>
@@ -122,18 +124,14 @@ export function OwnerDashboard({ stats, range }: OwnerDashboardProps) {
               <li key={member.userId} className="flex flex-col gap-1.5">
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="text-[15px]">{member.name}</span>
-                  <span className="font-display text-sm font-semibold tabular-nums">
+                  <span className="font-mono text-sm font-semibold tabular-nums">
                     {formatGuaranies(member.income)}
                   </span>
                 </div>
-                <div className="bg-line h-1.5 overflow-hidden rounded-full">
-                  <div
-                    className="bg-accent h-full rounded-full"
-                    style={{
-                      width: `${Math.round((member.income / maxIncome) * 100)}%`,
-                    }}
-                  />
-                </div>
+                <PerforatedBar
+                  value={member.income / maxIncome}
+                  label={`Ingresos de ${member.name} frente al mejor del rango`}
+                />
                 <span className="text-muted text-xs tabular-nums">
                   {member.cuts} {member.cuts === 1 ? "corte" : "cortes"}
                 </span>

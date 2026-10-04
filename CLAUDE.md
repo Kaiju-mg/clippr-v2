@@ -352,4 +352,21 @@ backlog):
   componentes en los dos temas. **Pendiente:** verlo con sesión iniciada.
   Ver `docs/arquitectura.md` sección "Poste de la racha".
 
+Spec 10 (tema "Recibo de Barbería", `docs/specs/10-theme-recibo.md`),
+**fase 1 implementada** (2026-10-03): tokens con la paleta papel/tinta/sello
+(`--stamp`, `--paper*` nuevos, ningún token renombrado), `theme-color`
+`#fffdf6`/`#161412`, IBM Plex Mono como `font-mono` **sólo en montos y
+horas**, punteado en las filas de `/agenda` y de movimientos de `/caja`,
+`PerforatedBar` en las barras de progreso y "Iniciar corte" relleno ya
+registrado como decisión. Las horas pasan de 12 h ("04:30 p. m.") a
+24 h como en el muestrario (`hourCycle: "h23"` en `src/lib/dates.ts`). **Sin migraciones.**
+Verificado: lint, typecheck, 323 tests (incluye un test que lee
+`globals.css` y chequea la tabla de la spec y el contraste AA en los dos
+temas), build y capturas a 360 px en los dos temas con Chromium headless.
+Recorrido con sesión de dueño en el navegador (360 px, claro y oscuro):
+`/inicio`, `/agenda`, `/estadisticas`, `/servicios`, `/productos`, sin
+desbordes ni errores de consola. Movimientos de `/caja` y barra de nivel
+del barbero sólo vistos con datos falsos. **Pendiente:** fases 2 a 5. Ver
+`docs/arquitectura.md` sección "Tema Recibo".
+
 El resto (nada pendiente del backlog) sigue como estaba.

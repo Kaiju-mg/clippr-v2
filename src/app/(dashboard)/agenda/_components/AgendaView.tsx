@@ -109,9 +109,10 @@ export function AgendaView({
           {appointments.map((appointment) => {
             const service = servicesById.get(appointment.service_id);
             return (
+              // Punteado: cada turno es plata (spec 10, regla 3).
               <li
                 key={appointment.id}
-                className="border-line border-b last:border-b-0"
+                className="border-muted/55 border-b border-dashed last:border-b-0"
               >
                 <AppointmentRow
                   appointment={appointment}
