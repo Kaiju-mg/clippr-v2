@@ -1739,3 +1739,49 @@ corte y plata de mentira en la caja, la racha, el nivel y las estadísticas.
 La confirmación evita lo contrario: perder un corte de verdad con un toque.
 Costo: un botón más en la tarjeta; queda en gris para no competir con
 "Finalizar".
+
+## 2026-10-04 — Documentos legales: textos propios, datos del responsable en un solo lugar
+Elegido: Términos y Condiciones, Política de Privacidad (con la sección de
+cookies adentro), Ayuda y Eliminar cuenta como páginas públicas del grupo
+`(legal)`, enlazadas desde login, registro y Más. Los datos del responsable
+(Eduardo Villalba, persona física, Paraguay) y el email de contacto están
+en `src/lib/legal.ts`. La Política describe lo que la app hace de verdad
+(qué guarda cada tabla, Supabase y Cloudflare como proveedores, sin
+publicidad ni analítica, borrado y anonimizado). Sin política de reembolsos:
+hoy no se cobra, y los Términos dicen que se publicará antes de cualquier
+cobro. El registro exige aceptar los dos textos (también en el servidor) y
+guarda `terms_version` y `terms_accepted_at` en los metadatos del usuario de
+Auth.
+Descartado: plantillas genéricas de otros países, un banner de cookies (sólo
+hay cookies estrictamente necesarias) y una columna nueva para la
+aceptación.
+Por qué: lo pidió el usuario con una lista de lo que exigen las tiendas y
+la ley. Un texto que no coincide con lo que hace la app es peor que no
+tenerlo.
+Costo: **no son revisión legal**. Antes de publicar: el email de contacto
+(hoy `null`, las páginas muestran "[email de soporte pendiente]") y una
+lectura de un abogado paraguayo, en especial sobre la ley de protección de
+datos que aplique. Los barberos que da de alta el dueño no aceptan los
+términos al entrar (ver `docs/deuda-tecnica.md`).
+
+## 2026-10-04 — Eliminar cuenta: el dueño borra la barbería, el barbero se anonimiza
+Elegido: `deleteAccountAction` elimina siempre la cuenta propia (sale de la
+sesión, no recibe ids). Dueño: borra la fila de la barbería (las cascadas
+de `barbershop_id` se llevan equipo, servicios, productos, cajas, turnos y
+cobros) y después los usuarios de Auth de todo el equipo; confirma
+escribiendo el nombre de la barbería. Barbero: su fila de `users` pasa a
+"Barbero eliminado" y se borra su usuario de Auth; confirma escribiendo
+ELIMINAR y no puede tener una caja abierta. Migración
+`20261004010000_users_auth_set_null_on_delete.sql`: `users.auth_id`
+nullable y `on delete set null`, para que borrar el login no borre en
+cascada la historia de caja. `/equipo` no lista las filas con `auth_id`
+null; el ranking de estadísticas sí (es historia).
+Descartado: borrar al barbero en cascada (se llevaba la caja del negocio),
+un borrado "suave" con una columna `deleted_at` (el login seguiría
+existiendo) y dejar sólo un pedido por email.
+Por qué: lo pidió el usuario ("Implementarlo ya"). Los cobros de un barbero
+son registros de la barbería, que el dueño necesita para sus cuentas; los
+datos personales del barbero (nombre, email, contraseña) sí se van.
+Costo: depende de `SUPABASE_SERVICE_ROLE_KEY` (sin ella, la pantalla lo
+dice). Si falla borrar algún login del equipo después de borrar la
+barbería, quedan cuentas sin datos que hay que borrar a mano en Supabase.

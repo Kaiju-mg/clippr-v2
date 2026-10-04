@@ -19,6 +19,10 @@ const LINKS = [
   { href: "/productos", label: "Productos" },
   { href: "/equipo", label: "Equipo" },
   { href: "/mas/cambiar-password", label: "Cambiar contraseña" },
+  { href: "/ayuda", label: "Ayuda" },
+  { href: "/terminos", label: "Términos" },
+  { href: "/privacidad", label: "Privacidad" },
+  { href: "/mas/eliminar-cuenta", label: "Eliminar mi cuenta" },
 ];
 
 interface PerfilConBarberia {

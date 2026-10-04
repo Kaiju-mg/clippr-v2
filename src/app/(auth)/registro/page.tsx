@@ -14,6 +14,7 @@ export default function RegistroPage() {
   const [ownerName, setOwnerName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -27,6 +28,7 @@ export default function RegistroPage() {
       password,
       ownerName,
       barbershopName,
+      acceptedTerms,
     });
 
     if (!result.success) {
@@ -93,13 +95,39 @@ export default function RegistroPage() {
           onChange={(event) => setPassword(event.target.value)}
         />
 
+        <label className="flex items-start gap-2.5 text-sm leading-snug">
+          <input
+            type="checkbox"
+            name="acceptedTerms"
+            required
+            checked={acceptedTerms}
+            onChange={(event) => setAcceptedTerms(event.target.checked)}
+            className="accent-accent mt-0.5 h-4 w-4 flex-none"
+          />
+          <span>
+            Acepto los{" "}
+            <Link href="/terminos" target="_blank" className="underline">
+              Términos y Condiciones
+            </Link>{" "}
+            y la{" "}
+            <Link href="/privacidad" target="_blank" className="underline">
+              Política de Privacidad
+            </Link>
+            .
+          </span>
+        </label>
+
         {error && (
           <p role="alert" className="text-danger text-sm">
             {error}
           </p>
         )}
 
-        <Button type="submit" disabled={isLoading} className="w-full py-2.5">
+        <Button
+          type="submit"
+          disabled={isLoading || !acceptedTerms}
+          className="w-full py-2.5"
+        >
           {isLoading ? "Creando cuenta..." : "Crear cuenta"}
         </Button>
       </form>

@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { Suspense, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { loginAction } from "@/actions/auth.actions";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { AuthShell } from "../_components/AuthShell";
+import { AccountDeletedNotice } from "../_components/AccountDeletedNotice";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -43,6 +44,10 @@ export default function LoginPage() {
         </>
       }
     >
+      <Suspense fallback={null}>
+        <AccountDeletedNotice />
+      </Suspense>
+
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Input
           id="email"

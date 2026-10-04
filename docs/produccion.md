@@ -29,8 +29,9 @@ ejecución: en Cloudflare es un secreto del Worker y en local está en
    gestor de contraseñas: no va en el repo ni en el chat.
 2. En Authentication → Providers → Email, dejar "Confirm email" como esté
    decidido para el piloto (hoy está desactivado en el de desarrollo).
-3. Aplicar las migraciones al proyecto nuevo. Son **15** desde la fase 3 de
-   la spec 10 (la última es `20261004000000_barbershops_phone_owner_update.sql`).
+3. Aplicar las migraciones al proyecto nuevo. Son **16** (la última es
+   `20261004010000_users_auth_set_null_on_delete.sql`, la de eliminar
+   cuenta).
    De paso valida que la secuencia completa corre limpia desde cero, cosa que
    hoy nadie verificó:
    ```

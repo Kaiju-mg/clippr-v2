@@ -4,9 +4,11 @@ import LoginPage from "../login/page";
 import RegistroPage from "../registro/page";
 
 const pushMock = vi.fn();
+let searchParams = new URLSearchParams();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
+  useSearchParams: () => searchParams,
 }));
 
 vi.mock("@/actions/auth.actions", () => ({
@@ -18,6 +20,7 @@ import { loginAction, registerOwnerAction } from "@/actions/auth.actions";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  searchParams = new URLSearchParams();
 });
 
 describe("LoginPage", () => {
@@ -119,6 +122,7 @@ describe("RegistroPage", () => {
     fireEvent.change(screen.getByLabelText("Contraseña"), {
       target: { value: "123456" },
     });
+    fireEvent.click(screen.getByRole("checkbox", { name: /acepto los/i }));
     fireEvent.click(screen.getByRole("button", { name: "Crear cuenta" }));
 
     await waitFor(() => {
@@ -127,6 +131,7 @@ describe("RegistroPage", () => {
         password: "123456",
         ownerName: "Juan Pérez",
         barbershopName: "Barbería Central",
+        acceptedTerms: true,
       });
     });
     expect(pushMock).toHaveBeenCalledWith("/inicio");
@@ -152,6 +157,7 @@ describe("RegistroPage", () => {
     fireEvent.change(screen.getByLabelText("Contraseña"), {
       target: { value: "123456" },
     });
+    fireEvent.click(screen.getByRole("checkbox", { name: /acepto los/i }));
     fireEvent.click(screen.getByRole("button", { name: "Crear cuenta" }));
 
     expect(
@@ -183,5 +189,51 @@ describe("Login y registro — tema Recibo", () => {
     expect(
       screen.getByRole("link", { name: "Registrá tu barbería" }),
     ).toHaveAttribute("href", "/registro");
+  });
+});
+
+describe("Términos, privacidad y cuenta eliminada (2026-10-04)", () => {
+  it("el registro no se puede enviar sin aceptar los Términos y la Privacidad", () => {
+    render(<RegistroPage />);
+    const crear = screen.getByRole("button", { name: "Crear cuenta" });
+    expect(crear).toBeDisabled();
+
+    const casilla = screen.getByRole("checkbox", { name: /acepto los/i });
+    expect(casilla).toBeRequired();
+    fireEvent.click(casilla);
+    expect(crear).toBeEnabled();
+  });
+
+  it("la casilla enlaza a los Términos y a la Política de Privacidad", () => {
+    render(<RegistroPage />);
+    expect(
+      screen.getByRole("link", { name: "Términos y Condiciones" }),
+    ).toHaveAttribute("href", "/terminos");
+    expect(
+      screen.getByRole("link", { name: "Política de Privacidad" }),
+    ).toHaveAttribute("href", "/privacidad");
+  });
+
+  it("login y registro tienen los links legales al pie", () => {
+    render(<LoginPage />);
+    const nav = screen.getByRole("navigation", {
+      name: "Documentos de Clippr",
+    });
+    expect(nav).toHaveTextContent("Términos");
+    expect(nav).toHaveTextContent("Privacidad");
+    expect(nav).toHaveTextContent("Ayuda");
+  });
+
+  it("después de eliminar la cuenta, el login lo confirma", () => {
+    searchParams = new URLSearchParams("cuenta=eliminada");
+    render(<LoginPage />);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Tu cuenta se eliminó.",
+    );
+  });
+
+  it("sin el parámetro, no hay aviso", () => {
+    render(<LoginPage />);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });

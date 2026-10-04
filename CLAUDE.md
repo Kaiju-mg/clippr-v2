@@ -57,6 +57,7 @@ Correr `npm run lint && npm run typecheck && npm test` antes de dar una tarea po
 src/app/                 rutas (App Router)
   api/health/route.ts    health check (no toca DB ni auth)
   (auth)/                login/registro
+  (legal)/               términos, privacidad, ayuda, eliminar cuenta (públicas)
   (dashboard)/           layout (guard de sesión + BottomNav) + inicio, caja,
                           agenda, servicios, productos, equipo, mas,
                           estadisticas
@@ -451,6 +452,16 @@ queda oficial que los tableros son cubos y los catálogos listas; y
 arrancado sin querer ahora se puede **descartar** desde su tarjeta (con
 confirmación; antes la única salida era cobrarlo y sumaba a la caja, la
 racha y las estadísticas). Ver `docs/decisiones.md` (2026-10-04).
+
+**Documentos legales y eliminar cuenta** (2026-10-04): páginas públicas
+`/terminos`, `/privacidad`, `/ayuda` y `/eliminar-cuenta` (grupo
+`(legal)`, datos del responsable en `src/lib/legal.ts`), casilla obligatoria
+de aceptación en el registro, y **Eliminar mi cuenta** en `/mas` (el dueño
+borra la barbería; el barbero se anonimiza). Migración
+`20261004010000_users_auth_set_null_on_delete.sql`. **No publicar** hasta
+cargar el email de contacto (`LEGAL.contactEmail` es `null`), y los textos
+necesitan revisión de un abogado. `README.md` reescrito y `CHANGELOG.md`
+nuevo. Ver `docs/decisiones.md` (2026-10-04).
 
 **Antes del piloto** (2026-10-04, `docs/produccion.md`): la base de
 producción sigue siendo la de desarrollo (las `NEXT_PUBLIC_SUPABASE_*` se

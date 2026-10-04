@@ -1078,6 +1078,25 @@ migraciones:
 - **`--warning` claro `#9a5212`:** pasa AA sobre el papel y los cubos;
   verificado en `theme-tokens.test.ts`.
 
+### Documentos legales y eliminar cuenta (2026-10-04)
+
+- **Páginas públicas** (grupo `(legal)`, fuera del guard de sesión, con
+  `LegalPage`): `/terminos`, `/privacidad` (incluye cookies), `/ayuda`
+  (preguntas frecuentes y contacto) y `/eliminar-cuenta` (cómo borrar la
+  cuenta, qué se borra y qué se conserva; la que piden las tiendas). Datos
+  del responsable y email en `src/lib/legal.ts`. Enlazadas desde el pie de
+  login y registro (`AuthShell`) y desde `/mas`.
+- **Registro:** casilla obligatoria de Términos y Privacidad;
+  `registerOwnerAction` la vuelve a exigir y guarda `terms_version` y
+  `terms_accepted_at` en los metadatos del usuario de Auth.
+- **Eliminar mi cuenta** (`/mas/eliminar-cuenta`, `deleteAccountAction`): el
+  dueño borra la barbería y las cuentas del equipo; el barbero se anonimiza
+  ("Barbero eliminado") y se borra su login. Migración
+  `20261004010000_users_auth_set_null_on_delete.sql` (`users.auth_id`
+  nullable, `on delete set null`). `getTeamAction` y `getTeamEmailsAction`
+  saltean las filas con `auth_id` null. Después del borrado, `/login`
+  muestra "Tu cuenta se eliminó" (`AccountDeletedNotice`).
+
 ## Modelo de Datos
 
 Entidades principales enfocadas en resolver el modelo Multi-Tenant, los turnos y la gestión individual de caja:

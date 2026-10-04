@@ -30,7 +30,8 @@ export interface Barbershop {
 
 export interface User {
   id: string;
-  auth_id: string;
+  /** null: la cuenta se eliminó (la fila queda anonimizada, 2026-10-04). */
+  auth_id: string | null;
   barbershop_id: string;
   role: UserRole;
   name: string;

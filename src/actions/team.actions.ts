@@ -105,9 +105,12 @@ async function getCurrentProfile(
 export async function getTeamAction(): Promise<TeamActionResult<User[]>> {
   const supabase = await createClient();
 
+  // `auth_id` null = cuenta eliminada (anonimizada, ver account.actions.ts):
+  // su historia queda en la caja, pero ya no es parte del equipo.
   const { data, error } = await supabase
     .from("users")
     .select("*")
+    .not("auth_id", "is", null)
     .order("name");
 
   if (error) {
@@ -136,7 +139,10 @@ export async function getTeamEmailsAction(): Promise<Record<string, string>> {
 
   if (!profile || profile.role !== "owner") return {};
 
-  const { data, error } = await supabase.from("users").select("id, auth_id");
+  const { data, error } = await supabase
+    .from("users")
+    .select("id, auth_id")
+    .not("auth_id", "is", null);
 
   if (error || !data) {
     if (error) console.error("getTeamEmailsAction:", error.message);

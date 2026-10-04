@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { LEGAL } from "@/lib/legal";
 
 export type ActionResult =
   { success: true } | { success: false; error: string };
@@ -11,6 +12,8 @@ export interface RegisterOwnerInput {
   password: string;
   ownerName: string;
   barbershopName: string;
+  /** La casilla "Acepto los Términos y la Política de Privacidad". */
+  acceptedTerms: boolean;
 }
 
 export interface LoginInput {
@@ -28,6 +31,16 @@ const MENSAJE_ERROR_GENERICO = "Algo salió mal. Intentá de nuevo.";
 export async function registerOwnerAction(
   data: RegisterOwnerInput,
 ): Promise<ActionResult> {
+  // También en el servidor: la casilla del formulario se puede saltear
+  // llamando a la acción directo.
+  if (data.acceptedTerms !== true) {
+    return {
+      success: false,
+      error:
+        "Para crear la cuenta tenés que aceptar los Términos y la Política de Privacidad.",
+    };
+  }
+
   if (data.password.length < 6) {
     return {
       success: false,
@@ -37,9 +50,17 @@ export async function registerOwnerAction(
 
   const supabase = await createClient();
 
+  // Qué versión de los textos aceptó y cuándo, en los metadatos del usuario
+  // de Auth: queda la constancia sin una migración (2026-10-04).
   const { error: signUpError } = await supabase.auth.signUp({
     email: data.email,
     password: data.password,
+    options: {
+      data: {
+        terms_version: LEGAL.version,
+        terms_accepted_at: new Date().toISOString(),
+      },
+    },
   });
 
   if (signUpError) {

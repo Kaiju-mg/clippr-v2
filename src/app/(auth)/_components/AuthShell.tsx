@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { BarberPole } from "@/components/ui/BarberPole";
 
 interface AuthShellProps {
@@ -40,6 +41,21 @@ export function AuthShell({ title, children, footer }: AuthShellProps) {
         </section>
 
         <p className="text-muted text-center text-sm">{footer}</p>
+
+        <nav
+          aria-label="Documentos de Clippr"
+          className="text-muted flex justify-center gap-4 text-xs"
+        >
+          <Link href="/terminos" className="underline">
+            Términos
+          </Link>
+          <Link href="/privacidad" className="underline">
+            Privacidad
+          </Link>
+          <Link href="/ayuda" className="underline">
+            Ayuda
+          </Link>
+        </nav>
       </div>
     </main>
   );
